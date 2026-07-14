@@ -10,11 +10,25 @@ def _D(v) -> Decimal:
     return Decimal(0) if v in (None, "") else Decimal(str(v))
 
 
+def _norm(s):
+    """去掉空白字符，用于表头匹配容错（真实表头常有『名  称』带空格）。"""
+    return str(s).replace(" ", "").replace("　", "").replace("\t", "")
+
+
+def _col(idx, keyword):
+    """在(已归一化的)列名→索引字典中按包含关系找列（兼容『订单号/小票单号』合并表头）。"""
+    nk = _norm(keyword)
+    for k, v in idx.items():
+        if nk in k:
+            return v
+    raise KeyError(keyword)
+
+
 def _find_header(rows, *keywords):
-    """返回 (index, header_row)：第一个每列字符串中能同时找到全部关键字的行。"""
+    """返回 (index, header_row)：第一个每列(去空白后)能同时找到全部关键字的行。"""
     for i, r in enumerate(rows):
-        cells = [str(c) for c in r if c is not None]
-        if all(any(k in c for c in cells) for k in keywords):
+        cells = [_norm(c) for c in r if c is not None]
+        if all(any(_norm(k) in c for c in cells) for k in keywords):
             return i, list(r)
     raise ValueError(f"找不到含 {keywords} 的表头行")
 
@@ -35,12 +49,12 @@ def load_products_from_rows(info_rows, cost_rows=None):
     """商品信息表 + 销售成本表 → {barcode: Product}，按条码合并成本。"""
     cost_rows = cost_rows or []
     ii, ih = _find_header(info_rows, "国际条码")
-    idx = {str(c): k for k, c in enumerate(ih) if c is not None}
+    idx = {_norm(c): k for k, c in enumerate(ih) if c is not None}
     bc_i, name_i, spec_i, cat_i = idx["国际条码"], idx["商品名称"], idx["规格"], idx["类别"]
     cost_map = {}
     if cost_rows:
         ci, ch = _find_header(cost_rows, "商品条码")
-        cidx = {str(c): k for k, c in enumerate(ch) if c is not None}
+        cidx = {_norm(c): k for k, c in enumerate(ch) if c is not None}
         cbc, ccost = cidx["商品条码"], cidx["销售成本"]
         for r in cost_rows[ci + 1:]:
             if r and len(r) > cbc and r[cbc] not in (None, ""):
@@ -58,7 +72,7 @@ def load_products_from_rows(info_rows, cost_rows=None):
 def load_stores_from_rows(rows):
     """『2026.6全部』风格 sheet → (stores, targets)。表头需含 类别/组别/名称/本月目标(可含 主管)。"""
     ii, h = _find_header(rows, "类别", "名称", "本月目标")
-    idx = {str(c): k for k, c in enumerate(h) if c is not None}
+    idx = {_norm(c): k for k, c in enumerate(h) if c is not None}
     sup_i = idx.get("主管")
     stores, targets = {}, {}
     for r in rows[ii + 1:]:
@@ -77,12 +91,12 @@ def load_stores_from_rows(rows):
 def load_sales_from_rows(rows):
     """销售流水 → [SalesLine]。"""
     ii, h = _find_header(rows, "小票单号", "销售金额")
-    idx = {str(c): k for k, c in enumerate(h) if c is not None}
+    idx = {_norm(c): k for k, c in enumerate(h) if c is not None}
     g = lambda k: idx.get(k)
     lines = []
     for r in rows[ii + 1:]:
-        if r[g("序号")] in (None, ""):
-            continue
+        if r[g("序号")] in (None, "") or r[g("销售时间")] in (None, ""):
+            continue  # 跳过无序号或无销售时间的行（如合计行/异常行）
         src = r[g("源单号")]
         sp_i = g("营业员名称")
         lines.append(SalesLine(
@@ -105,8 +119,8 @@ def load_sales_from_rows(rows):
 def load_gift_keys_from_rows(rows):
     """让利明细(整份=赠送清单) → {(订单号, 国际条码)} 集合。"""
     ii, h = _find_header(rows, "订单号", "国际条码")
-    idx = {str(c): k for k, c in enumerate(h) if c is not None}
-    o, b = idx["订单号"], idx["国际条码"]
+    idx = {_norm(c): k for k, c in enumerate(h) if c is not None}
+    o, b = _col(idx, "订单号"), _col(idx, "国际条码")  # 表头可能是『订单号/小票单号』合并
     keys = set()
     for r in rows[ii + 1:]:
         if r and len(r) > o and r[o] not in (None, ""):

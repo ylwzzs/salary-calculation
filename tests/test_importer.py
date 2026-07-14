@@ -58,3 +58,12 @@ def test_load_gift_keys():
     assert ("R001", "6920001") in keys
     assert ("R009", "6920002") in keys
     assert len(keys) == 2
+
+
+def test_load_stores_tolerates_spaced_header():
+    # 真实『2026.6全部』表头是『名  称』带空格，匹配需容错
+    rows = [["主管", "类别", "组  别", "名  称", "本月目标"],
+            ["胡总", "A", "1组", "福景店", "84000"]]
+    stores, targets = load_stores_from_rows(rows)
+    assert "福景店" in stores
+    assert targets["福景店"] == Decimal("84000")

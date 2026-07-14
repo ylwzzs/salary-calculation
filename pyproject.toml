@@ -1,0 +1,18 @@
+[project]
+name = "salary-engine"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["pandas>=2.0", "openpyxl>=3.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+salary-engine = "salary_engine.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

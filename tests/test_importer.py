@@ -35,7 +35,7 @@ def test_load_stores():
 
 def test_load_sales_flags_return_and_online():
     header = ["序号", "销售方式", "订单渠道", "小票单号", "源单号", "机构名称",
-              "销售时间", "国际条码", "商品名称", "数量", "销售金额", "销售单价", "营业员名称"]
+              "销售时间", "国际条码", "商品名称", "数量", "销售金额", "销售单价", "收银员名称"]
     rows = [
         ["1", "销售", "线下", "R001", "", "福景店", "2026-06-01", "6920001", "奶", "1", "3", "3", "高睿"],
         ["2", "退货", "线下", "R002", "R001", "福景店", "2026-06-02", "6920001", "奶", "-1", "-3", "3", "高睿"],
@@ -45,6 +45,7 @@ def test_load_sales_flags_return_and_online():
     assert len(lines) == 3
     assert lines[0].is_return is False and lines[0].is_online is False
     assert lines[0].store == "福景店"   # 保留原始门店名，由 calculator.clean_store 清洗
+    assert lines[0].salesperson == "高睿"   # 当班人取自『收银员名称』
     assert lines[1].is_return is True and lines[1].amount == Decimal("-3")
     assert lines[1].src_order == "R001"
     assert lines[2].is_online is True

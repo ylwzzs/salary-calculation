@@ -98,7 +98,8 @@ def load_sales_from_rows(rows):
         if r[g("序号")] in (None, "") or r[g("销售时间")] in (None, ""):
             continue  # 跳过无序号或无销售时间的行（如合计行/异常行）
         src = r[g("源单号")]
-        sp_i = g("营业员名称")
+        # 真实数据中『营业员名称』恒为空，当班人=收银员（对应『正确收银员』表）
+        sp_i = g("收银员名称")
         lines.append(SalesLine(
             receipt=str(r[g("小票单号")]),
             src_order=(str(src) if src not in (None, "") else None),

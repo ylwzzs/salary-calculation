@@ -1,14 +1,13 @@
 """提成计算主流程（规格 §2、§3）。"""
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 
 from salary_engine.margin import gross_margin, classify_tier
 from salary_engine.rates import achievement_bucket, lookup_rate
 from salary_engine.onduty import infer_duty
-from salary_engine.models import SalesLine
 
 
 def clean_store(name: str) -> str:
@@ -57,9 +56,7 @@ def compute(sales_lines, products, stores, targets, rate_table,
     # 1) 拆分：正常销售/退货；剔除赠送；跳过非乳品；清洗门店名
     sales, returns = [], []
     for ln in sales_lines:
-        ln = SalesLine(ln.receipt, ln.src_order, clean_store(ln.store), ln.sale_date,
-                       ln.barcode, ln.product_name, ln.qty, ln.amount, ln.unit_price,
-                       ln.is_return, ln.is_online, salesperson=ln.salesperson)
+        ln = replace(ln, store=clean_store(ln.store))  # 仅改门店名，保留其余字段
         if (ln.receipt, ln.barcode) in gift_keys:
             continue  # 赠送剔除
         if ln.barcode not in products:

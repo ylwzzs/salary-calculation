@@ -1,0 +1,32 @@
+# 数据文件（大且含敏感销售数据，不入库）
+*.xlsx
+*.xls
+*.csv
+
+# 文档目录下的内容仍允许（规格文档等）
+!docs/**
+
+# 头脑风暴/视觉伴侣临时产物
+.superpowers/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Node / 前端
+node_modules/
+dist/
+build/
+
+# 数据库与上传
+*.db
+*.sqlite
+*.sqlite3
+uploads/
+
+# 系统
+.DS_Store
+*.log

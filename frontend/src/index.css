@@ -31,3 +31,65 @@ html, body, #root {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: rgba(55, 53, 47, 0.16); border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(55, 53, 47, 0.28); }
+
+/* ============================================================
+   Ant Design 组件覆写 — 消除 "企业 AntD 感"
+   ============================================================ */
+
+/* --- Table --- */
+.ant-table-container { border: 1px solid #E9E9E7 !important; border-radius: 8px !important; overflow: hidden; }
+.ant-table-thead > tr > th {
+  background: #FAFAF9 !important;
+  border-bottom: 1px solid #E9E9E7 !important;
+  border-top: none !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.3px !important;
+  color: #787774 !important;
+}
+.ant-table-tbody > tr > td { border-bottom: 1px solid #F1F1EF !important; padding: 10px 12px !important; }
+.ant-table-tbody > tr.ant-table-row:hover > td { background: #F7F6F3 !important; }
+.ant-table-cell-row-hover { background: #F7F6F3 !important; }
+
+/* --- Card --- */
+.ant-card { box-shadow: none !important; border: 1px solid #E9E9E7 !important; border-radius: 8px !important; }
+.ant-card-head { border-bottom: 1px solid #F1F1EF !important; min-height: 40px !important; }
+.ant-card-head-title { font-size: 14px !important; font-weight: 600 !important; color: #37352F !important; }
+
+/* --- Menu (Notion-style: flat, no bg, bold selected) --- */
+.ant-menu-inline { background: transparent !important; border-inline-end: none !important; }
+.ant-menu-item-selected { background: rgba(55, 53, 47, 0.08) !important; font-weight: 600; }
+.ant-menu-item:hover { background: rgba(55, 53, 47, 0.06) !important; }
+
+/* --- Button: Notion dark primary --- */
+.ant-btn-primary { background: #37352F !important; border-color: #37352F !important; }
+.ant-btn-primary:hover, .ant-btn-primary:focus { background: #4A4543 !important; border-color: #4A4543 !important; }
+
+/* --- Form: Notion-like spacing --- */
+.ant-form-vertical .ant-form-item { margin-bottom: 18px; }
+.ant-input-lg, .ant-input-affix-lg { font-size: 15px !important; }
+.ant-form-item-label > label { color: #787774 !important; font-weight: 500 !important; }
+
+/* --- Drawer --- */
+.ant-drawer-body { padding: 20px !important; }
+.ant-drawer-header { border-bottom: 1px solid #E9E9E7 !important; }
+
+/* --- Modal --- */
+.ant-modal-header { border-bottom: 1px solid #F1F1EF !important; padding: 16px 24px !important; }
+.ant-modal-body { padding: 20px 24px !important; }
+.ant-modal-content { border-radius: 12px !important; overflow: hidden; }
+
+/* --- Steps --- */
+.ant-steps-item-title { color: #787774 !important; font-size: 13px !important; }
+.ant-steps-item-active .ant-steps-item-title { color: #37352F !important; font-weight: 600; }
+.ant-steps-item-finish .ant-steps-item-icon { background: #0F7B6C !important; border-color: #0F7B6C !important; }
+
+/* --- Badge/Tag --- */
+.ant-tag { border-radius: 4px !important; font-size: 12px !important; font-weight: 500; }
+
+/* --- Statistic --- */
+.ant-statistic-content-value { color: #37352F !important; }
+
+/* --- Dropdown/Pagination --- */
+.ant-dropdown-menu-item-selected, .ant-pagination-item-active { background: #F7F6F3 !important; }

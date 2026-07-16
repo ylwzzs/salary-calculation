@@ -26,3 +26,20 @@ def test_import_sales_and_gifts(tmp_path, client):
     assert r.status_code == 200
     m = client.get("/months/2026-06", headers=h).json()
     assert m["sales_file"] and m["sales_file"].endswith(".xlsx")
+
+
+def test_infer_and_confirm_duty(tmp_path, client):
+    h = auth_header(client)
+    client.post("/months", headers=h, json={"month": "2026-06"})
+    client.put("/stores/福景店", headers=h, json={"name": "福景店", "group": "1组", "store_class": "A"})
+    s = tmp_path / "sales.xlsx"; _sales_xlsx(s)
+    with open(s, "rb") as f:
+        client.post("/months/2026-06/import-sales", headers=h, files={"file": ("sales.xlsx", f)})
+    grid = client.post("/months/2026-06/infer-duty", headers=h).json()
+    assert "福景店" in grid and "2026-06-01" in grid["福景店"]
+    # 确认
+    r = client.put("/months/2026-06/duty", headers=h, json={
+        "items": [{"store": "福景店", "date": "2026-06-01", "salesperson": "高睿"}]})
+    assert r.status_code == 200
+    got = client.get("/months/2026-06/duty", headers=h).json()
+    assert got["福景店"]["2026-06-01"] == "高睿"

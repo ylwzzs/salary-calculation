@@ -68,8 +68,9 @@ def test_missing_target_warns(products, stores):
     assert any("缺月度目标" in w and "福景店" in w for w in result.warnings)
 
 
-def test_person_monthly_achievement_cross_store(products):
-    # 高睿 6/1 在福景店(A,目标30000)、6/2 在魅力之城店(B,目标60000)，各卖1500
+def test_per_store_achievement_cross_store(products):
+    # 高睿 6/1 福景店(A,目标30000)、6/2 魅力之城店(B,目标60000)，各卖1500。
+    # 按「人×店」分别算：两个店各自一个达成档，提成分别算后相加。
     stores = {"福景店": Store("福景店", "1组", "A"),
               "魅力之城店": Store("魅力之城店", "2组", "B")}
     targets = {"福景店": Decimal("30000"), "魅力之城店": Decimal("60000")}
@@ -83,18 +84,20 @@ def test_person_monthly_achievement_cross_store(products):
     ]
     r = compute(sales, products, stores, targets, seed_rate_table(),
                 month="2026-06", days=30)
-    # 个人目标 = 30000/30 + 60000/30 = 1000+2000 = 3000；业绩3000 → 达成率100%
-    assert r.person_target["高睿"] == Decimal("3000")
-    assert r.person_achievement["高睿"] == Decimal(1)
-    # 两笔都用高睿的 GE_100 档，但门店类别不同：A低温高毛13%→195；B低温高毛14%→210；合计405
-    assert r.commission_by_person["高睿"] == Decimal("405")
+    # 福景店：目标30000/30×1=1000，业绩1500 → 150% → GE_100；A低温高毛13% → 195
+    assert r.breakdown[("高睿", "福景店")]["achievement"] == Decimal("1.5")
+    assert r.breakdown[("高睿", "福景店")]["commission"] == Decimal("195")
+    # 魅力之城店：目标60000/30×1=2000，业绩1500 → 75% → 70_80；B低温高毛11% → 165
+    assert r.breakdown[("高睿", "魅力之城店")]["bucket"] == "70_80"
+    assert r.breakdown[("高睿", "魅力之城店")]["commission"] == Decimal("165")
+    # 个人合计 = 195 + 165 = 360
+    assert r.commission_by_person["高睿"] == Decimal("360")
 
 
-def test_person_monthly_bucket_shared_across_days(products, stores):
-    # 同一人在福景店干两天：业绩合并算一个月度档，两天共用（非按天各算各的）
+def test_per_store_achievement_multi_day_same_store(products, stores):
+    # 同一人在福景店干两天：同店多天合并算这一个店的达成档
     target = {"福景店": Decimal("30000")}  # 日目标=1000
     sales = [
-        # 6/1 卖2000（当天200%）、6/2 卖200（当天20%）；月度合计2200/月目标(2天×1000=2000)=110%→GE_100
         SalesLine("R1", None, "福景店", date(2026, 6, 1), "6920001", "奶",
                   Decimal(1), Decimal("2000"), Decimal(3),
                   is_return=False, is_online=False, salesperson="高睿"),
@@ -104,7 +107,7 @@ def test_person_monthly_bucket_shared_across_days(products, stores):
     ]
     r = compute(sales, products, stores, target, seed_rate_table(),
                 month="2026-06", days=30)
-    # 月度目标=1000×2=2000；业绩2200→110%→GE_100；两天都按GE_100的A类低温高毛13%
-    assert r.person_achievement["高睿"] == Decimal("1.1")
-    # 2000×0.13 + 200×0.13 = 286
+    # 福景店两天：目标1000×2=2000，业绩2200 → 110% → GE_100
+    assert r.breakdown[("高睿", "福景店")]["achievement"] == Decimal("1.1")
+    # 2200 × A类低温高毛13% = 286
     assert r.commission_by_person["高睿"] == Decimal("286")

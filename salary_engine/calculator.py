@@ -40,9 +40,7 @@ class ComputeResult:
     details: list = field(default_factory=list)
     commission_by_person: dict = field(default_factory=dict)
     commission_by_store: dict = field(default_factory=dict)
-    person_sales: dict = field(default_factory=dict)        # 个人月度业绩
-    person_target: dict = field(default_factory=dict)       # 个人月度目标
-    person_achievement: dict = field(default_factory=dict)  # 个人月度达成率
+    breakdown: dict = field(default_factory=dict)  # {(person,store): {sales,target,achievement,bucket,commission}}
     warnings: list = field(default_factory=list)
 
 
@@ -97,30 +95,29 @@ def compute(sales_lines, products, stores, targets, rate_table,
     for r in unmatched_returns:
         daily_sales[(r.store, r.sale_date)] += r.amount  # 负数
 
-    # 5) 个人月度达成率（规格 §2.4）：按人聚合其所有当班(店×天)的业绩与目标
-    person_sales = defaultdict(Decimal)
-    person_target = defaultdict(Decimal)
+    # 5) 按「人×店」分别算达成率（规格 §2.4）：每人在每个店各自一个达成档
+    ps_sales = defaultdict(Decimal)     # (person, store) -> 业绩
+    ps_target = defaultdict(Decimal)    # (person, store) -> 目标
     for (s, d), net in daily_sales.items():
         p = _resolve_duty(duty, s, d, None)
         if p is None:
-            continue  # 无当班人（如纯线上天）：不进个人聚合，其销售按笔 fallback 计
-        person_sales[p] += net
+            continue  # 无当班人：不进聚合，其销售按笔 fallback 计
+        ps_sales[(p, s)] += net
         tgt = targets.get(s)
         if not tgt:
             missing_target_stores.add(s)
         else:
-            person_target[p] += tgt / days if days else Decimal(0)
+            ps_target[(p, s)] += tgt / days if days else Decimal(0)
 
-    person_ach, person_bucket = {}, {}
-    for p, tgt in person_target.items():
-        ach = person_sales[p] / tgt if tgt else Decimal(0)
-        person_ach[p] = ach
-        person_bucket[p] = achievement_bucket(ach)
+    ps_bucket = {}
+    for key, tgt in ps_target.items():
+        ps_bucket[key] = achievement_bucket(ps_sales[key] / tgt if tgt else Decimal(0))
 
-    # 6) 逐组算提成：达成档用『该人月度档』，门店类别按本笔销售发生的门店
+    # 6) 逐组算提成：达成档用『该人×该店』的档，门店类别按本笔销售门店
     details = []
     comm_person = defaultdict(Decimal)
     comm_store = defaultdict(Decimal)
+    ps_commission = defaultdict(Decimal)  # (person, store) -> 提成
 
     # 正常销售组（扣精确退货后的净额）
     for g in groups.values():
@@ -141,15 +138,16 @@ def compute(sales_lines, products, stores, targets, rate_table,
         margin = gross_margin(s0.unit_price, product.cost)
         tier = classify_tier(product.category, margin)
         sp = _resolve_duty(duty, s0.store, s0.sale_date, s0.salesperson)
-        bucket = person_bucket.get(sp, "LT_70")
+        bucket = ps_bucket.get((sp, s0.store), "LT_70")
         rate = lookup_rate(rate_table, store_obj.store_class, bucket, tier)
         commission = net * rate
         details.append(DetailRow(s0.store, s0.sale_date, sp, s0.barcode, s0.product_name,
                                  tier, store_obj.store_class, bucket, rate, net, commission))
         comm_person[sp] += commission
         comm_store[s0.store] += commission
+        ps_commission[(sp, s0.store)] += commission
 
-    # 不匹配退货：算到退货当日，按该人月度档比例算负数，标黄
+    # 不匹配退货：算到退货当日，按『该人×该店』档比例算负数，标黄
     for r in unmatched_returns:
         product = products[r.barcode]
         store_obj = stores.get(r.store)
@@ -159,7 +157,7 @@ def compute(sales_lines, products, stores, targets, rate_table,
         margin = gross_margin(r.unit_price, product.cost)
         tier = classify_tier(product.category, margin)
         sp = _resolve_duty(duty, r.store, r.sale_date, r.salesperson)
-        bucket = person_bucket.get(sp, "LT_70")
+        bucket = ps_bucket.get((sp, r.store), "LT_70")
         rate = lookup_rate(rate_table, store_obj.store_class, bucket, tier)
         commission = r.amount * rate  # amount 为负 → 提成负
         details.append(DetailRow(r.store, r.sale_date, sp, r.barcode, r.product_name,
@@ -167,16 +165,28 @@ def compute(sales_lines, products, stores, targets, rate_table,
                                  commission, flag="退货未匹配"))
         comm_person[sp] += commission
         comm_store[r.store] += commission
+        ps_commission[(sp, r.store)] += commission
 
     for store in sorted(missing_target_stores):
         warnings.append(f"缺月度目标: {store}")
 
+    # 按「人×店」汇总（供结果展示/对账）
+    breakdown = {}
+    for key, sales in ps_sales.items():
+        tgt = ps_target.get(key, Decimal(0))
+        ach = sales / tgt if tgt else Decimal(0)
+        breakdown[key] = {
+            "sales": sales,
+            "target": tgt,
+            "achievement": ach,
+            "bucket": achievement_bucket(ach) if tgt else "LT_70",
+            "commission": ps_commission.get(key, Decimal(0)),
+        }
+
     return ComputeResult(details=details,
                          commission_by_person=dict(comm_person),
                          commission_by_store=dict(comm_store),
-                         person_sales=dict(person_sales),
-                         person_target=dict(person_target),
-                         person_achievement=person_ach,
+                         breakdown=breakdown,
                          warnings=warnings)
 
 

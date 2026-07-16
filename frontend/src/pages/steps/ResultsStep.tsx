@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Download, Zap, Users, DollarSign, BarChart3 } from "lucide-react";
+import { Block, Callout } from "@/components/Block";
 
 interface Breakdown { person: string; store: string; sales: number; target: number; achievement: number; bucket: string; commission: number; }
 interface ResultData { salary: { person: string; commission: number }[]; breakdown: Breakdown[]; }
@@ -22,7 +23,7 @@ const MEDAL = ["bg-amber-500", "bg-zinc-400", "bg-amber-700"];
 
 function KpiCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 flex items-center gap-3">
+    <div className="rounded-lg border border-zinc-200 bg-white p-4 flex items-center gap-3 hover:border-zinc-300 transition-colors">
       <div className="w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-600 shrink-0">{icon}</div>
       <div><p className="text-[12px] text-zinc-400">{label}</p><p className="text-xl font-semibold text-zinc-900 tnum">{value}</p></div>
     </div>
@@ -72,26 +73,29 @@ export default function ResultsStep({ month, onComputed }: { month: string; onCo
 
   return (
     <>
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-5">
         <Button onClick={compute} disabled={busy} className="bg-zinc-900 hover:bg-zinc-800"><Zap className="w-4 h-4 mr-1.5" />计算提成</Button>
         <Button variant="outline" onClick={() => workflowApi.downloadExport(month)}><Download className="w-4 h-4 mr-1.5" />导出 Excel</Button>
       </div>
 
       {!has ? (
-        <div className="rounded-lg border border-dashed border-zinc-300 p-12 text-center text-zinc-400">尚未计算</div>
+        <Callout variant="info" icon={<BarChart3 className="w-4 h-4" />}>尚未计算，点击上方「计算提成」生成结果</Callout>
       ) : (
-        <>
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <KpiCard icon={<DollarSign className="w-5 h-5" />} label="提成总额" value={`¥${total.toFixed(2)}`} />
-            <KpiCard icon={<Users className="w-5 h-5" />} label="参与营业员" value={String(data!.salary.length)} />
-            <KpiCard icon={<DollarSign className="w-5 h-5" />} label="人均提成" value={`¥${(total / data!.salary.length).toFixed(2)}`} />
-          </div>
-          <div className="grid grid-cols-[1fr_1.3fr] gap-3 mb-4">
-            <div className="rounded-lg border border-zinc-200 bg-white p-5">
+        <div className="space-y-4">
+          <Block className="border border-zinc-200 bg-white !p-0">
+            <div className="grid grid-cols-3 divide-x divide-zinc-100">
+              <div className="p-4"><KpiCard icon={<DollarSign className="w-5 h-5" />} label="提成总额" value={`¥${total.toFixed(2)}`} /></div>
+              <div className="p-4"><KpiCard icon={<Users className="w-5 h-5" />} label="参与营业员" value={String(data!.salary.length)} /></div>
+              <div className="p-4"><KpiCard icon={<DollarSign className="w-5 h-5" />} label="人均提成" value={`¥${(total / data!.salary.length).toFixed(2)}`} /></div>
+            </div>
+          </Block>
+
+          <div className="grid grid-cols-[1fr_1.3fr] gap-4">
+            <Block className="border border-zinc-200 bg-white p-5">
               <h3 className="text-sm font-medium text-zinc-500 mb-3 flex items-center gap-1.5"><BarChart3 className="w-4 h-4" />达成档位分布</h3>
               <BucketChart rows={data!.breakdown} />
-            </div>
-            <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            </Block>
+            <Block className="border border-zinc-200 bg-white p-5">
               <h3 className="text-sm font-medium text-zinc-500 mb-3">提成 Top 5</h3>
               <div className="divide-y divide-zinc-100">
                 {top5.map((p, i) => (
@@ -102,10 +106,11 @@ export default function ResultsStep({ month, onComputed }: { month: string; onCo
                   </div>
                 ))}
               </div>
-            </div>
+            </Block>
           </div>
-          <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
-            <div className="px-4 py-3 border-b border-zinc-100 flex items-center justify-between">
+
+          <Block className="border border-zinc-200 bg-white p-0 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-zinc-100">
               <h3 className="text-sm font-medium text-zinc-500">工资明细（点击查看每人「人×店」）</h3>
             </div>
             <Table>
@@ -116,7 +121,7 @@ export default function ResultsStep({ month, onComputed }: { month: string; onCo
               </TableRow></TableHeader>
               <TableBody>
                 {data!.salary.map((r, i) => (
-                  <TableRow key={r.person} className="cursor-pointer hover:bg-zinc-50" onClick={() => { setPerson(r.person); setOpen(true); }}>
+                  <TableRow key={r.person} className="cursor-pointer" onClick={() => { setPerson(r.person); setOpen(true); }}>
                     <TableCell>
                       {i < 3
                         ? <span className={`inline-flex w-5 h-5 rounded-full items-center justify-center text-[11px] font-bold text-white ${MEDAL[i]}`}>{i + 1}</span>
@@ -128,11 +133,11 @@ export default function ResultsStep({ month, onComputed }: { month: string; onCo
                 ))}
               </TableBody>
             </Table>
-          </div>
-        </>
+          </Block>
+        </div>
       )}
 
-      {/* ── 明细抽屉 ── */}
+      {/* 明细抽屉 */}
       {open && (
         <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setOpen(false)}>
           <div className="absolute inset-0 bg-black/20" />

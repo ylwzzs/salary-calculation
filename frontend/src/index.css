@@ -9,3 +9,29 @@
 /* 滚动条微调 */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: rgba(55, 53, 47, 0.15); border-radius: 3px; }
+
+/* === Notion 风格表格 === */
+[data-slot="table-header"] th,
+table thead th {
+  background: transparent !important;
+  border-bottom: 1px solid #e5e5e5 !important;
+  font-weight: 500 !important;
+  color: #737373 !important;
+  font-size: 12.5px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.02em !important;
+}
+[data-slot="table-body"] td,
+table tbody td {
+  border-bottom: 1px solid #f5f5f5 !important;
+  transition: background 0.08s;
+}
+[data-slot="table-body"] tr:hover,
+table tbody tr:hover {
+  background: #fafafa !important;
+}
+
+/* === Notion 式按钮 === */
+[data-slot="button"].bg-zinc-900 {
+  background: #171717 !important;
+}

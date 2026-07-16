@@ -58,3 +58,12 @@ class RateVersionOut(BaseModel):
 class RateVersionCreate(BaseModel):
     effective_from: date
     rates: dict
+
+
+class TargetItem(BaseModel):
+    store: str
+    target: Decimal
+
+
+class TargetBatch(BaseModel):
+    items: list[TargetItem]

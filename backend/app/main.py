@@ -51,3 +51,6 @@ app.include_router(stores_router.router)
 
 from backend.app.routers import rates as rates_router
 app.include_router(rates_router.router)
+
+from backend.app.routers import targets as targets_router
+app.include_router(targets_router.router)

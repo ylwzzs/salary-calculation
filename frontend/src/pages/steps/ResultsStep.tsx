@@ -1,39 +1,31 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Button, Table, message, Drawer, Space, Card, Col, Row, Typography, Tag, Empty } from "antd";
-import { DownloadOutlined, ThunderboltOutlined, TeamOutlined, DollarOutlined, BarChartOutlined } from "@ant-design/icons";
+import { useEffect, useMemo, useState } from "react";
 import { workflowApi } from "../../api";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { Download, Zap, Users, DollarSign, BarChart3 } from "lucide-react";
 
-const { Text } = Typography;
-
-interface Breakdown {
-  person: string; store: string; sales: number; target: number;
-  achievement: number; bucket: string; commission: number;
-}
+interface Breakdown { person: string; store: string; sales: number; target: number; achievement: number; bucket: string; commission: number; }
 interface ResultData { salary: { person: string; commission: number }[]; breakdown: Breakdown[]; }
 
-// Notion 风柔和配色
 const BUCKETS = [
-  { key: "GE_100", label: "≥100%", color: "#0F7B6C" },
-  { key: "90_100", label: "90~99%", color: "#2383E2" },
-  { key: "80_90", label: "80~89%", color: "#6F5BD0" },
-  { key: "70_80", label: "70~79%", color: "#CB7623" },
-  { key: "LT_70", label: "<70%", color: "#9B9A97" },
+  { key: "GE_100", label: "≥100%", color: "bg-emerald-500" },
+  { key: "90_100", label: "90~99%", color: "bg-blue-500" },
+  { key: "80_90", label: "80~89%", color: "bg-violet-500" },
+  { key: "70_80", label: "70~79%", color: "bg-amber-500" },
+  { key: "LT_70", label: "<70%", color: "bg-zinc-400" },
 ];
-const BUCKET_COLOR: Record<string, string> = Object.fromEntries(BUCKETS.map((b) => [b.key, b.color]));
-const MEDAL = ["#C99700", "#91918E", "#A35E2C"]; // 金 银 铜（柔和）
+const BUCKET_LABELS: Record<string, string> = Object.fromEntries(BUCKETS.map((b) => [b.key, b.label]));
+const BUCKET_COLORS: Record<string, string> = Object.fromEntries(BUCKETS.map((b) => [b.key, b.color]));
+const MEDAL = ["bg-amber-500", "bg-zinc-400", "bg-amber-700"];
 
-function Kpi({ icon, title, value, accent }: { icon: ReactNode; title: string; value: string; accent: string }) {
+function KpiCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <Card size="small" style={{ borderRadius: 8, borderColor: "#E9E9E7" }} styles={{ body: { padding: 16 } }}>
-      <Space align="center" size={14}>
-        <div style={{ width: 40, height: 40, borderRadius: 8, background: accent + "18", color: accent,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19 }}>{icon}</div>
-        <div>
-          <div style={{ color: "#9B9A97", fontSize: 12.5 }}>{title}</div>
-          <div className="tnum" style={{ fontSize: 22, fontWeight: 700, color: "#37352F", lineHeight: 1.2 }}>{value}</div>
-        </div>
-      </Space>
-    </Card>
+    <div className="rounded-lg border border-zinc-200 bg-white p-4 flex items-center gap-3">
+      <div className="w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-600 shrink-0">{icon}</div>
+      <div><p className="text-[12px] text-zinc-400">{label}</p><p className="text-xl font-semibold text-zinc-900 tnum">{value}</p></div>
+    </div>
   );
 }
 
@@ -42,15 +34,15 @@ function BucketChart({ rows }: { rows: Breakdown[] }) {
   const max = Math.max(1, ...counts.map((c) => c.n));
   const total = counts.reduce((s, c) => s + c.n, 0);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+    <div className="space-y-2.5">
       {counts.map((c) => (
-        <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 64, fontSize: 12.5, color: "#787774" }}>{c.label}</div>
-          <div style={{ flex: 1, height: 16, background: "#F1F1EF", borderRadius: 8, overflow: "hidden" }}>
-            <div style={{ width: `${(c.n / max) * 100}%`, height: "100%", background: c.color, borderRadius: 8, transition: "width .4s" }} />
+        <div key={c.key} className="flex items-center gap-3">
+          <span className="w-[52px] text-[13px] text-zinc-500 text-right">{c.label}</span>
+          <div className="flex-1 h-4 bg-zinc-100 rounded-md overflow-hidden">
+            <div className={`${c.color} h-full rounded-md transition-all duration-500`} style={{ width: `${(c.n / max) * 100}%` }} />
           </div>
-          <div className="tnum" style={{ width: 36, textAlign: "right", fontSize: 13, fontWeight: 600, color: "#37352F" }}>{c.n}</div>
-          <div style={{ width: 38, textAlign: "right", fontSize: 11.5, color: "#9B9A97" }}>{total ? Math.round((c.n / total) * 100) : 0}%</div>
+          <span className="w-7 text-[13px] font-medium text-zinc-800 text-right tnum">{c.n}</span>
+          <span className="w-9 text-[11px] text-zinc-400 text-right">{total ? Math.round((c.n / total) * 100) : 0}%</span>
         </div>
       ))}
     </div>
@@ -68,86 +60,110 @@ export default function ResultsStep({ month, onComputed }: { month: string; onCo
 
   const compute = async () => {
     setBusy(true);
-    try {
-      const r = await workflowApi.compute(month);
-      message.success(`计算完成：${r.details} 条明细，总额 ¥${r.total.toFixed(2)}`);
-      onComputed?.(); await load();
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { detail?: string } }; message?: string });
-      message.error("计算失败：" + (msg.response?.data?.detail || msg.message || "未知错误"));
-    } finally { setBusy(false); }
+    try { const r = await workflowApi.compute(month); toast.success(`计算完成：${r.details} 条，总额 ¥${r.total.toFixed(2)}`); onComputed?.(); await load(); }
+    catch (e: unknown) { const msg = (e as { response?: { data?: { detail?: string } }; message?: string }); toast.error("计算失败：" + (msg.response?.data?.detail || msg.message)); }
+    finally { setBusy(false); }
   };
 
   const total = data ? data.salary.reduce((s, x) => s + x.commission, 0) : 0;
   const has = !!data && data.salary.length > 0;
-  const avg = has ? total / data!.salary.length : 0;
   const top5 = useMemo(() => (data?.salary || []).slice(0, 5), [data]);
-  const personDetail = useMemo(() => (data?.breakdown || []).filter((r) => r.person === person), [data, person]);
+  const detail = useMemo(() => (data?.breakdown || []).filter((r) => r.person === person), [data, person]);
 
   return (
     <>
-      <Space style={{ marginBottom: 18 }}>
-        <Button type="primary" icon={<ThunderboltOutlined />} loading={busy} onClick={compute}>计算提成</Button>
-        <Button icon={<DownloadOutlined />} onClick={() => workflowApi.downloadExport(month)}>导出 Excel</Button>
-      </Space>
+      <div className="flex items-center gap-2 mb-4">
+        <Button onClick={compute} disabled={busy} className="bg-zinc-900 hover:bg-zinc-800"><Zap className="w-4 h-4 mr-1.5" />计算提成</Button>
+        <Button variant="outline" onClick={() => workflowApi.downloadExport(month)}><Download className="w-4 h-4 mr-1.5" />导出 Excel</Button>
+      </div>
 
       {!has ? (
-        <Card style={{ borderRadius: 8, borderColor: "#E9E9E7" }}><Empty description="尚未计算，点击「计算提成」生成结果" /></Card>
+        <div className="rounded-lg border border-dashed border-zinc-300 p-12 text-center text-zinc-400">尚未计算</div>
       ) : (
         <>
-          <Row gutter={12} style={{ marginBottom: 12 }}>
-            <Col span={8}><Kpi icon={<DollarOutlined />} title="提成总额" value={"¥" + total.toFixed(2)} accent="#2383E2" /></Col>
-            <Col span={8}><Kpi icon={<TeamOutlined />} title="参与营业员" value={String(data!.salary.length)} accent="#0F7B6C" /></Col>
-            <Col span={8}><Kpi icon={<DollarOutlined />} title="人均提成" value={"¥" + avg.toFixed(2)} accent="#6F5BD0" /></Col>
-          </Row>
-
-          <Row gutter={12} style={{ marginBottom: 12 }}>
-            <Col span={10}>
-              <Card size="small" title={<Space><BarChartOutlined /> 达成档位分布</Space>} style={{ borderRadius: 8, borderColor: "#E9E9E7" }} styles={{ body: { padding: 18 } }}>
-                <BucketChart rows={data!.breakdown} />
-              </Card>
-            </Col>
-            <Col span={14}>
-              <Card size="small" title={<Space><TeamOutlined /> 提成 Top 5</Space>} style={{ borderRadius: 8, borderColor: "#E9E9E7" }} styles={{ body: { padding: "10px 16px" } }}>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <KpiCard icon={<DollarSign className="w-5 h-5" />} label="提成总额" value={`¥${total.toFixed(2)}`} />
+            <KpiCard icon={<Users className="w-5 h-5" />} label="参与营业员" value={String(data!.salary.length)} />
+            <KpiCard icon={<DollarSign className="w-5 h-5" />} label="人均提成" value={`¥${(total / data!.salary.length).toFixed(2)}`} />
+          </div>
+          <div className="grid grid-cols-[1fr_1.3fr] gap-3 mb-4">
+            <div className="rounded-lg border border-zinc-200 bg-white p-5">
+              <h3 className="text-sm font-medium text-zinc-500 mb-3 flex items-center gap-1.5"><BarChart3 className="w-4 h-4" />达成档位分布</h3>
+              <BucketChart rows={data!.breakdown} />
+            </div>
+            <div className="rounded-lg border border-zinc-200 bg-white p-4">
+              <h3 className="text-sm font-medium text-zinc-500 mb-3">提成 Top 5</h3>
+              <div className="divide-y divide-zinc-100">
                 {top5.map((p, i) => (
-                  <div key={p.person} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: i < 4 ? "1px solid #F1F1EF" : "none" }}>
-                    <div style={{ width: 24, height: 24, borderRadius: "50%", flex: "0 0 24px", display: "flex", alignItems: "center", justifyContent: "center",
-                      background: i < 3 ? MEDAL[i] : "#EFEFED", color: i < 3 ? "#fff" : "#9B9A97", fontWeight: 700, fontSize: 12 }}>{i + 1}</div>
-                    <Text strong style={{ flex: 1, color: "#37352F" }}>{p.person}</Text>
-                    <span className="tnum" style={{ fontWeight: 700, color: "#37352F" }}>¥{p.commission.toFixed(2)}</span>
+                  <div key={p.person} className="flex items-center gap-3 py-2">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 ${i < 3 ? MEDAL[i] : "bg-zinc-200 text-zinc-500"}`}>{i + 1}</div>
+                    <span className="flex-1 text-sm font-medium text-zinc-800">{p.person}</span>
+                    <span className="tnum text-sm font-semibold text-zinc-900">¥{p.commission.toFixed(2)}</span>
                   </div>
                 ))}
-              </Card>
-            </Col>
-          </Row>
-
-          <Card size="small" title="工资明细（点击查看每人「人×店」）" style={{ borderRadius: 8, borderColor: "#E9E9E7" }} styles={{ body: { padding: 0 } }}>
-            <Table rowKey="person" size="middle" dataSource={data!.salary} pagination={{ pageSize: 12, showSizeChanger: false }}
-              onRow={(r) => ({ onClick: () => { setPerson(r.person); setOpen(true); }, style: { cursor: "pointer" } })}
-              columns={[
-                { title: "#", width: 50, render: (_, __, i) => i < 3
-                    ? <span style={{ display: "inline-flex", width: 22, height: 22, borderRadius: "50%", background: MEDAL[i], color: "#fff", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{i + 1}</span>
-                    : <span style={{ color: "#9B9A97" }}>{i + 1}</span> },
-                { title: "营业员", dataIndex: "person", render: (v) => <Text strong style={{ color: "#37352F" }}>{v}</Text> },
-                { title: "提成合计", dataIndex: "commission", align: "right", width: 140,
-                  render: (v: number) => <span className="tnum" style={{ color: "#37352F", fontWeight: 700 }}>¥{v.toFixed(2)}</span> },
-              ]} />
-          </Card>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 border-b border-zinc-100 flex items-center justify-between">
+              <h3 className="text-sm font-medium text-zinc-500">工资明细（点击查看每人「人×店」）</h3>
+            </div>
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead className="w-12">#</TableHead>
+                <TableHead>营业员</TableHead>
+                <TableHead className="text-right">提成合计</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {data!.salary.map((r, i) => (
+                  <TableRow key={r.person} className="cursor-pointer hover:bg-zinc-50" onClick={() => { setPerson(r.person); setOpen(true); }}>
+                    <TableCell>
+                      {i < 3
+                        ? <span className={`inline-flex w-5 h-5 rounded-full items-center justify-center text-[11px] font-bold text-white ${MEDAL[i]}`}>{i + 1}</span>
+                        : <span className="text-zinc-400 text-[13px]">{i + 1}</span>}
+                    </TableCell>
+                    <TableCell className="font-medium">{r.person}</TableCell>
+                    <TableCell className="text-right tnum font-semibold text-zinc-900">¥{r.commission.toFixed(2)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </>
       )}
 
-      <Drawer title={<Space><TeamOutlined /> {person} 的提成明细</Space>} open={open} onClose={() => setOpen(false)} size="large"
-              styles={{ body: { padding: 16 } }}>
-        <Table rowKey={(r) => r.person + r.store} size="small" dataSource={personDetail} pagination={{ pageSize: 50 }}
-               columns={[
-                 { title: "门店", dataIndex: "store" },
-                 { title: "业绩", dataIndex: "sales", align: "right", render: (v: number) => <span className="tnum">{v?.toFixed(0)}</span> },
-                 { title: "目标", dataIndex: "target", align: "right", render: (v: number) => <span className="tnum">{v?.toFixed(0)}</span> },
-                 { title: "达成", dataIndex: "achievement", align: "right", render: (v: number) => <span className="tnum">{(v * 100).toFixed(0)}%</span> },
-                 { title: "档", dataIndex: "bucket", align: "center", render: (b: string) => <Tag color={BUCKET_COLOR[b] || "default"} style={{ borderRadius: 4 }}>{b}</Tag> },
-                 { title: "提成", dataIndex: "commission", align: "right", render: (v: number) => <span className="tnum" style={{ fontWeight: 700 }}>¥{v.toFixed(2)}</span> },
-               ]} />
-      </Drawer>
+      {/* ── 明细抽屉 ── */}
+      {open && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setOpen(false)}>
+          <div className="absolute inset-0 bg-black/20" />
+          <div className="relative w-full max-w-[680px] bg-white shadow-xl border-l border-zinc-200 h-full overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-zinc-100 px-5 py-3.5 flex items-center justify-between z-10">
+              <h3 className="text-sm font-semibold">{person} 的提成明细</h3>
+              <button onClick={() => setOpen(false)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">&times;</button>
+            </div>
+            <div className="p-4">
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead>门店</TableHead><TableHead>业绩</TableHead><TableHead>目标</TableHead>
+                  <TableHead>达成</TableHead><TableHead>档</TableHead><TableHead className="text-right">提成</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {detail.map((r) => (
+                    <TableRow key={r.person + r.store}>
+                      <TableCell>{r.store}</TableCell>
+                      <TableCell className="tnum">{r.sales?.toFixed(0)}</TableCell>
+                      <TableCell className="tnum">{r.target?.toFixed(0)}</TableCell>
+                      <TableCell className="tnum">{(r.achievement * 100).toFixed(0)}%</TableCell>
+                      <TableCell><Badge variant="outline" className={`text-[11px] ${BUCKET_COLORS[r.bucket] || ""} text-white border-0`}>{BUCKET_LABELS[r.bucket] || r.bucket}</Badge></TableCell>
+                      <TableCell className="text-right tnum font-semibold">¥{r.commission.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

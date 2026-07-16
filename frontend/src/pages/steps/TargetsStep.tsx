@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Table, InputNumber, Button, message } from "antd";
 import { targetsApi } from "../../api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { toast } from "sonner";
 
-interface Row {
-  store: string;
-  target: number;
-}
+interface Row { store: string; target: number; }
 
 export default function TargetsStep({ month }: { month: string }) {
   const [rows, setRows] = useState<Row[]>([]);
@@ -16,54 +16,44 @@ export default function TargetsStep({ month }: { month: string }) {
     try {
       const data = await targetsApi.get(month);
       const items = Object.values(data)[0] || {};
-      setRows(
-        Object.entries(items).map(([store, target]) => ({
-          store,
-          target: Number(target),
-        })),
-      );
-    } finally {
-      setLoading(false);
-    }
+      setRows(Object.entries(items).map(([store, target]) => ({ store, target: Number(target) })));
+    } finally { setLoading(false); }
   };
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   const save = async () => {
-    await targetsApi.set(
-      month,
-      rows.map((r) => ({ store: r.store, target: String(r.target) })),
-    );
-    message.success("目标已保存");
+    await targetsApi.set(month, rows.map((r) => ({ store: r.store, target: String(r.target) })));
+    toast.success("目标已保存");
   };
 
   return (
-    <>
-      <Button onClick={save} style={{ marginBottom: 12 }} type="primary">
-        保存目标
-      </Button>
-      <Table
-        rowKey="store"
-        loading={loading}
-        dataSource={rows}
-        columns={[
-          { title: "门店", dataIndex: "store" },
-          {
-            title: "月度目标",
-            dataIndex: "target",
-            render: (_, r) => (
-              <InputNumber
-                value={r.target}
-                onChange={(v) => {
-                  r.target = Number(v || 0);
-                  setRows([...rows]);
-                }}
-              />
-            ),
-          },
-        ]}
-      />
-    </>
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={save} className="bg-zinc-900 hover:bg-zinc-800">保存目标</Button>
+      </div>
+      {loading ? <p className="text-sm text-zinc-400">加载中...</p> : (
+        <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+          <Table>
+            <TableHeader><TableRow>
+              <TableHead>门店</TableHead>
+              <TableHead className="text-right w-40">月度目标</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.store}>
+                  <TableCell>{r.store}</TableCell>
+                  <TableCell className="text-right">
+                    <Input type="number" value={r.target} onChange={(e) => {
+                      r.target = Number(e.target.value || 0);
+                      setRows([...rows]);
+                    }} className="w-28 h-8 text-right font-mono text-[13px]" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
   );
 }

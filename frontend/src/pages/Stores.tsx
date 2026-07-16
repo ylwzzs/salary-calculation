@@ -1,66 +1,84 @@
 import { useEffect, useState } from "react";
-import { Table, Button, Modal, Form, Input, Space, message, Select } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
 import { storesApi, type Store } from "../api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Plus } from "lucide-react";
+import { toast } from "sonner";
 
 const CLASSES = ["A", "B", "C", "D"];
 
 export default function Stores() {
   const [rows, setRows] = useState<Store[]>([]);
-  const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const [form] = Form.useForm();
-  const [editing, setEditing] = useState<Store | null>(null);
-  const [batchGroup, setBatchGroup] = useState<string>("");
-  const [batchClass, setBatchClass] = useState<string>("A");
+  const [edit, setEdit] = useState<Store | null>(null);
+  const [form, setForm] = useState<Partial<Store>>({});
+  const [batchGroup, setBatchGroup] = useState("");
+  const [batchClass, setBatchClass] = useState("A");
 
-  const load = async () => {
-    setLoading(true);
-    try { setRows(await storesApi.list()); } finally { setLoading(false); }
-  };
+  const load = async () => { try { setRows(await storesApi.list()); } catch { /* ignore */ } };
   useEffect(() => { load(); }, []);
 
-  const onSave = async () => {
-    const v = await form.validateFields();
-    await storesApi.upsert({ ...editing, ...v });
-    message.success("已保存"); setOpen(false); load();
+  const save = async () => {
+    if (!form.name) { toast.error("门店名不能为空"); return; }
+    await storesApi.upsert(form as Store);
+    toast.success("已保存"); setOpen(false); setEdit(null); load();
   };
-  const openEdit = (s?: Store) => {
-    setEditing(s ?? null); form.setFieldsValue(s ?? {}); setOpen(true);
-  };
+  const openEdit = (s?: Store) => { setEdit(s ?? null); setForm(s ?? {}); setOpen(true); };
   const onBatch = async () => {
-    if (!batchGroup) { message.warning("请输入组别"); return; }
+    if (!batchGroup) { toast.warning("请输入组别"); return; }
     const { updated } = await storesApi.batchClass(batchGroup, batchClass);
-    message.success(`已更新 ${updated} 家`); load();
+    toast.success(`已更新 ${updated} 家门店`);
   };
 
   return (
-    <>
-      <Space style={{ marginBottom: 12 }}>
-        <h2 style={{ margin: 0 }}>门店信息</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openEdit()}>新增/编辑</Button>
-      </Space>
-      <Space style={{ marginBottom: 12, display: "flex" }}>
-        <Input placeholder="组别(如 1组)" value={batchGroup} onChange={(e) => setBatchGroup(e.target.value)} style={{ width: 140 }} />
-        <Select value={batchClass} onChange={setBatchClass} style={{ width: 90 }} options={CLASSES.map((c) => ({ value: c, label: c + "类" }))} />
-        <Button onClick={onBatch}>按组批量改类别</Button>
-      </Space>
-      <Table rowKey="name" loading={loading} dataSource={rows}
-             columns={[
-               { title: "门店", dataIndex: "name" },
-               { title: "组别", dataIndex: "group" },
-               { title: "类别", dataIndex: "store_class" },
-               { title: "主管", dataIndex: "supervisor" },
-               { title: "操作", render: (_, r) => <a onClick={() => openEdit(r)}>编辑</a> },
-             ]} />
-      <Modal title="门店" open={open} onOk={onSave} onCancel={() => setOpen(false)} destroyOnHidden>
-        <Form form={form} layout="vertical">
-          <Form.Item name="name" label="门店名称" rules={[{ required: true }]}><Input disabled={!!editing} /></Form.Item>
-          <Form.Item name="group" label="组别"><Input placeholder="如 1组" /></Form.Item>
-          <Form.Item name="store_class" label="类别"><Select options={CLASSES.map((c) => ({ value: c, label: c }))} /></Form.Item>
-          <Form.Item name="supervisor" label="主管"><Input /></Form.Item>
-        </Form>
-      </Modal>
-    </>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-lg font-semibold">门店信息 <Badge variant="secondary">{rows.length}</Badge></h2>
+        <div className="flex items-center gap-2">
+          <Input placeholder="组别，如 1组" value={batchGroup} onChange={(e) => setBatchGroup(e.target.value)} className="w-28 h-9" />
+          <Select value={batchClass} onValueChange={setBatchClass}><SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>{CLASSES.map((c) => <SelectItem key={c} value={c}>{c}类</SelectItem>)}</SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={onBatch}>批量改类别</Button>
+          <Button size="sm" onClick={() => openEdit()}><Plus className="w-4 h-4 mr-1.5" />新增</Button>
+        </div>
+      </div>
+      <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+        <Table>
+          <TableHeader><TableRow>
+            <TableHead>门店</TableHead><TableHead>组别</TableHead><TableHead>类别</TableHead>
+            <TableHead>主管</TableHead><TableHead className="w-16"></TableHead>
+          </TableRow></TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.name} className="cursor-pointer hover:bg-zinc-50" onClick={() => openEdit(r)}>
+                <TableCell>{r.name}</TableCell>
+                <TableCell className="text-zinc-500">{r.group}</TableCell>
+                <TableCell><Badge variant="outline" className="text-xs">{r.store_class}</Badge></TableCell>
+                <TableCell className="text-zinc-500">{r.supervisor}</TableCell>
+                <TableCell><button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-xs text-zinc-400 hover:text-zinc-700">编辑</button></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEdit(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>{edit ? "编辑门店" : "新增门店"}</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div><Label className="text-[13px]">门店名称</Label><Input value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} disabled={!!edit} className="mt-1 h-9" /></div>
+            <div><Label className="text-[13px]">组别</Label><Input value={form.group ?? ""} onChange={(e) => setForm({ ...form, group: e.target.value })} placeholder="如 1组" className="mt-1 h-9" /></div>
+            <div><Label className="text-[13px]">类别</Label><Select value={form.store_class ?? ""} onValueChange={(v) => setForm({ ...form, store_class: v })}><SelectTrigger className="mt-1 h-9"><SelectValue placeholder="选择" /></SelectTrigger><SelectContent>{CLASSES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="text-[13px]">主管</Label><Input value={form.supervisor ?? ""} onChange={(e) => setForm({ ...form, supervisor: e.target.value })} className="mt-1 h-9" /></div>
+          </div>
+          <DialogFooter><Button onClick={save} className="bg-zinc-900 hover:bg-zinc-800">保存</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

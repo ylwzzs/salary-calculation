@@ -1,45 +1,35 @@
 import { useState } from "react";
-import { Upload, message, Space, Tag } from "antd";
-import { InboxOutlined } from "@ant-design/icons";
 import { workflowApi } from "../../api";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { Upload } from "lucide-react";
 
-const { Dragger } = Upload;
+function DropZone({ label, onUpload, done }: { label: string; onUpload: (f: File) => void; done: boolean }) {
+  return (
+    <div className={`rounded-lg border-2 border-dashed p-5 text-center transition-colors cursor-pointer ${done ? "border-emerald-300 bg-emerald-50" : "border-zinc-200 hover:border-zinc-300 bg-white"}`}>
+      <label className="cursor-pointer flex flex-col items-center gap-2">
+        <Upload className={`w-5 h-5 ${done ? "text-emerald-500" : "text-zinc-400"}`} />
+        <span className="text-sm text-zinc-500">{label} {done && <Badge className="ml-1 bg-emerald-100 text-emerald-700 border-emerald-200">已上传</Badge>}</span>
+        <input type="file" accept=".xlsx,.xls" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); }} />
+      </label>
+    </div>
+  );
+}
 
 export default function ImportStep({ month }: { month: string }) {
   const [sales, setSales] = useState(false);
   const [gifts, setGifts] = useState(false);
 
-  const upload = (kind: "sales" | "gifts") => ({
-    multiple: false,
-    showUploadList: false,
-    accept: ".xlsx,.xls",
-    beforeUpload: (file: File) => {
-      (kind === "sales" ? workflowApi.importSales : workflowApi.importGifts)(month, file)
-        .then(() => {
-          kind === "sales" ? setSales(true) : setGifts(true);
-          message.success("上传成功");
-        })
-        .catch(() => message.error("上传失败"));
-      return false;
-    },
-  });
+  const upload = (kind: "sales" | "gifts", file: File) => {
+    (kind === "sales" ? workflowApi.importSales : workflowApi.importGifts)(month, file)
+      .then(() => { kind === "sales" ? setSales(true) : setGifts(true); toast.success("上传成功"); })
+      .catch(() => toast.error("上传失败"));
+  };
 
   return (
-    <Space orientation="vertical" style={{ width: "100%" }}>
-      <div>销售流水 {sales && <Tag color="green">已上传</Tag>}</div>
-      <Dragger {...upload("sales")}>
-        <p className="ant-upload-drag-icon">
-          <InboxOutlined />
-        </p>
-        <p>点击或拖拽「销售流水」xlsx</p>
-      </Dragger>
-      <div>让利明细（赠送清单） {gifts && <Tag color="green">已上传</Tag>}</div>
-      <Dragger {...upload("gifts")}>
-        <p className="ant-upload-drag-icon">
-          <InboxOutlined />
-        </p>
-        <p>点击或拖拽「让利明细」xlsx（可选）</p>
-      </Dragger>
-    </Space>
+    <div className="space-y-3 max-w-xl">
+      <DropZone label="上传销售流水 xlsx" onUpload={(f) => upload("sales", f)} done={sales} />
+      <DropZone label="上传让利明细 xlsx（赠送清单，可选）" onUpload={(f) => upload("gifts", f)} done={gifts} />
+    </div>
   );
 }

@@ -11,6 +11,7 @@ export default function Layout() {
   const { token: t } = theme.useToken();
 
   const items = [
+    { key: "/months", label: "月度计算" },
     { key: "/products", label: "商品档案" },
     { key: "/stores", label: "门店信息" },
   ];

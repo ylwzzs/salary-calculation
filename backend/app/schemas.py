@@ -67,3 +67,19 @@ class TargetItem(BaseModel):
 
 class TargetBatch(BaseModel):
     items: list[TargetItem]
+
+
+class MonthOut(BaseModel):
+    month: str
+    status: str | None = None
+    sales_file: str | None = None
+    gifts_file: str | None = None
+    rate_version_id: int | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class MonthCreate(BaseModel):
+    month: str
+    copy_from: str | None = None

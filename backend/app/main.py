@@ -57,3 +57,6 @@ app.include_router(targets_router.router)
 
 from backend.app.routers import import_master as import_router
 app.include_router(import_router.router)
+
+from backend.app.routers import months as months_router
+app.include_router(months_router.router)

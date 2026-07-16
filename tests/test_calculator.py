@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from salary_engine.calculator import compute
 from salary_engine.rates import seed_rate_table
-from salary_engine.models import SalesLine
+from salary_engine.models import SalesLine, Store
 
 
 def test_basic_commission_lowtemp_highmargin_classA_full(stores, products):
@@ -66,3 +66,45 @@ def test_missing_target_warns(products, stores):
     result = compute(sales, products, stores, {}, seed_rate_table(),
                      month="2026-06", days=30)
     assert any("缺月度目标" in w and "福景店" in w for w in result.warnings)
+
+
+def test_person_monthly_achievement_cross_store(products):
+    # 高睿 6/1 在福景店(A,目标30000)、6/2 在魅力之城店(B,目标60000)，各卖1500
+    stores = {"福景店": Store("福景店", "1组", "A"),
+              "魅力之城店": Store("魅力之城店", "2组", "B")}
+    targets = {"福景店": Decimal("30000"), "魅力之城店": Decimal("60000")}
+    sales = [
+        SalesLine("R1", None, "福景店", date(2026, 6, 1), "6920001", "奶",
+                  Decimal(500), Decimal("1500"), Decimal(3),
+                  is_return=False, is_online=False, salesperson="高睿"),
+        SalesLine("R2", None, "魅力之城店", date(2026, 6, 2), "6920001", "奶",
+                  Decimal(500), Decimal("1500"), Decimal(3),
+                  is_return=False, is_online=False, salesperson="高睿"),
+    ]
+    r = compute(sales, products, stores, targets, seed_rate_table(),
+                month="2026-06", days=30)
+    # 个人目标 = 30000/30 + 60000/30 = 1000+2000 = 3000；业绩3000 → 达成率100%
+    assert r.person_target["高睿"] == Decimal("3000")
+    assert r.person_achievement["高睿"] == Decimal(1)
+    # 两笔都用高睿的 GE_100 档，但门店类别不同：A低温高毛13%→195；B低温高毛14%→210；合计405
+    assert r.commission_by_person["高睿"] == Decimal("405")
+
+
+def test_person_monthly_bucket_shared_across_days(products, stores):
+    # 同一人在福景店干两天：业绩合并算一个月度档，两天共用（非按天各算各的）
+    target = {"福景店": Decimal("30000")}  # 日目标=1000
+    sales = [
+        # 6/1 卖2000（当天200%）、6/2 卖200（当天20%）；月度合计2200/月目标(2天×1000=2000)=110%→GE_100
+        SalesLine("R1", None, "福景店", date(2026, 6, 1), "6920001", "奶",
+                  Decimal(1), Decimal("2000"), Decimal(3),
+                  is_return=False, is_online=False, salesperson="高睿"),
+        SalesLine("R2", None, "福景店", date(2026, 6, 2), "6920001", "奶",
+                  Decimal(1), Decimal("200"), Decimal(3),
+                  is_return=False, is_online=False, salesperson="高睿"),
+    ]
+    r = compute(sales, products, stores, target, seed_rate_table(),
+                month="2026-06", days=30)
+    # 月度目标=1000×2=2000；业绩2200→110%→GE_100；两天都按GE_100的A类低温高毛13%
+    assert r.person_achievement["高睿"] == Decimal("1.1")
+    # 2000×0.13 + 200×0.13 = 286
+    assert r.commission_by_person["高睿"] == Decimal("286")

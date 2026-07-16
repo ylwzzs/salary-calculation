@@ -40,6 +40,9 @@ class ComputeResult:
     details: list = field(default_factory=list)
     commission_by_person: dict = field(default_factory=dict)
     commission_by_store: dict = field(default_factory=dict)
+    person_sales: dict = field(default_factory=dict)        # 个人月度业绩
+    person_target: dict = field(default_factory=dict)       # 个人月度目标
+    person_achievement: dict = field(default_factory=dict)  # 个人月度达成率
     warnings: list = field(default_factory=list)
 
 
@@ -94,18 +97,27 @@ def compute(sales_lines, products, stores, targets, rate_table,
     for r in unmatched_returns:
         daily_sales[(r.store, r.sale_date)] += r.amount  # 负数
 
-    def ach_of(store, d):
-        target = targets.get(store)
-        if not target:
-            missing_target_stores.add(store)
-            return Decimal(0), "LT_70"
-        daily_target = target / days if days else Decimal(0)
-        if daily_target == 0:
-            return Decimal(0), "LT_70"
-        ach = daily_sales[(store, d)] / daily_target
-        return ach, achievement_bucket(ach)
+    # 5) 个人月度达成率（规格 §2.4）：按人聚合其所有当班(店×天)的业绩与目标
+    person_sales = defaultdict(Decimal)
+    person_target = defaultdict(Decimal)
+    for (s, d), net in daily_sales.items():
+        p = _resolve_duty(duty, s, d, None)
+        if p is None:
+            continue  # 无当班人（如纯线上天）：不进个人聚合，其销售按笔 fallback 计
+        person_sales[p] += net
+        tgt = targets.get(s)
+        if not tgt:
+            missing_target_stores.add(s)
+        else:
+            person_target[p] += tgt / days if days else Decimal(0)
 
-    # 5) 逐组算提成
+    person_ach, person_bucket = {}, {}
+    for p, tgt in person_target.items():
+        ach = person_sales[p] / tgt if tgt else Decimal(0)
+        person_ach[p] = ach
+        person_bucket[p] = achievement_bucket(ach)
+
+    # 6) 逐组算提成：达成档用『该人月度档』，门店类别按本笔销售发生的门店
     details = []
     comm_person = defaultdict(Decimal)
     comm_store = defaultdict(Decimal)
@@ -128,16 +140,16 @@ def compute(sales_lines, products, stores, targets, rate_table,
             continue
         margin = gross_margin(s0.unit_price, product.cost)
         tier = classify_tier(product.category, margin)
-        _, bucket = ach_of(s0.store, s0.sale_date)
+        sp = _resolve_duty(duty, s0.store, s0.sale_date, s0.salesperson)
+        bucket = person_bucket.get(sp, "LT_70")
         rate = lookup_rate(rate_table, store_obj.store_class, bucket, tier)
         commission = net * rate
-        sp = _resolve_duty(duty, s0.store, s0.sale_date, s0.salesperson)
         details.append(DetailRow(s0.store, s0.sale_date, sp, s0.barcode, s0.product_name,
                                  tier, store_obj.store_class, bucket, rate, net, commission))
         comm_person[sp] += commission
         comm_store[s0.store] += commission
 
-    # 不匹配退货：算到退货当日，按当日档比例算负数，标黄
+    # 不匹配退货：算到退货当日，按该人月度档比例算负数，标黄
     for r in unmatched_returns:
         product = products[r.barcode]
         store_obj = stores.get(r.store)
@@ -146,10 +158,10 @@ def compute(sales_lines, products, stores, targets, rate_table,
             continue
         margin = gross_margin(r.unit_price, product.cost)
         tier = classify_tier(product.category, margin)
-        _, bucket = ach_of(r.store, r.sale_date)
+        sp = _resolve_duty(duty, r.store, r.sale_date, r.salesperson)
+        bucket = person_bucket.get(sp, "LT_70")
         rate = lookup_rate(rate_table, store_obj.store_class, bucket, tier)
         commission = r.amount * rate  # amount 为负 → 提成负
-        sp = _resolve_duty(duty, r.store, r.sale_date, r.salesperson)
         details.append(DetailRow(r.store, r.sale_date, sp, r.barcode, r.product_name,
                                  tier, store_obj.store_class, bucket, rate, r.amount,
                                  commission, flag="退货未匹配"))
@@ -162,6 +174,9 @@ def compute(sales_lines, products, stores, targets, rate_table,
     return ComputeResult(details=details,
                          commission_by_person=dict(comm_person),
                          commission_by_store=dict(comm_store),
+                         person_sales=dict(person_sales),
+                         person_target=dict(person_target),
+                         person_achievement=person_ach,
                          warnings=warnings)
 
 
@@ -170,5 +185,5 @@ def _resolve_duty(duty, store, d, fallback):
     if v is None:
         return fallback
     if isinstance(v, list):
-        return fallback  # 多人当天：先用该行原营业员，UI 阶段再人工定
+        return sorted(v)[0]  # 多人当天：确定性取一人（UI 阶段可人工改）
     return v

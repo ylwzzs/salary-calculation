@@ -68,3 +68,37 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+class Month(Base):
+    __tablename__ = "months"
+    month = Column(String, primary_key=True)     # YYYY-MM
+    status = Column(String, default="draft")     # draft | computed
+    sales_file = Column(String, nullable=True)   # 上传的销售流水路径
+    gifts_file = Column(String, nullable=True)   # 上传的让利明细路径
+    rate_version_id = Column(Integer, nullable=True)  # 计算时锁定的比例表版本
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Duty(Base):
+    __tablename__ = "duties"
+    id = Column(Integer, primary_key=True)
+    month = Column(String, nullable=False)
+    store = Column(String, nullable=False)
+    duty_date = Column(Date, nullable=False)
+    salesperson = Column(String, nullable=False)  # 确认的当班人
+    __table_args__ = (UniqueConstraint("month", "store", "duty_date", name="uq_duty"),)
+
+
+class Result(Base):
+    __tablename__ = "results"
+    id = Column(Integer, primary_key=True)
+    month = Column(String, nullable=False)
+    person = Column(String, nullable=False)
+    store = Column(String, nullable=False)
+    sales = Column(Numeric, nullable=False)
+    target = Column(Numeric, nullable=False)
+    achievement = Column(Numeric, nullable=False)
+    bucket = Column(String, nullable=False)
+    commission = Column(Numeric, nullable=False)
+    __table_args__ = (UniqueConstraint("month", "person", "store", name="uq_result"),)

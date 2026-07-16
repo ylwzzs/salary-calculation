@@ -43,3 +43,23 @@ def test_infer_and_confirm_duty(tmp_path, client):
     assert r.status_code == 200
     got = client.get("/months/2026-06/duty", headers=h).json()
     assert got["福景店"]["2026-06-01"] == "高睿"
+
+
+def test_compute_and_result(tmp_path, client):
+    h = auth_header(client)
+    client.post("/months", headers=h, json={"month": "2026-06"})
+    client.put("/stores/福景店", headers=h, json={"name": "福景店", "group": "1组", "store_class": "A"})
+    client.put("/products/6920001", headers=h, json={
+        "barcode": "6920001", "name": "低温奶", "spec": "200ml", "category": "低温奶", "cost": "2"})
+    client.put("/months/2026-06/targets", headers=h, json={"items": [{"store": "福景店", "target": "3"}]})
+    s = tmp_path / "sales.xlsx"; _sales_xlsx(s)
+    with open(s, "rb") as f:
+        client.post("/months/2026-06/import-sales", headers=h, files={"file": ("sales.xlsx", f)})
+    client.post("/months/2026-06/infer-duty", headers=h)
+    client.put("/months/2026-06/duty", headers=h, json={
+        "items": [{"store": "福景店", "date": "2026-06-01", "salesperson": "高睿"}]})
+    r = client.post("/months/2026-06/compute", headers=h)
+    assert r.status_code == 200
+    res = client.get("/months/2026-06/results", headers=h).json()
+    # 目标3/天0.1，卖3→达成3000%→GE_100；A低温高毛(单价3成本2=33%>15%)13%→0.39
+    assert any(x["person"] == "高睿" and abs(x["commission"] - 0.39) < 0.01 for x in res["salary"])

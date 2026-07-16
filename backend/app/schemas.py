@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from pydantic import BaseModel
 
@@ -41,3 +42,19 @@ class StoreUpsert(BaseModel):
 class BatchClassIn(BaseModel):
     group: str                 # 按组
     store_class: str           # 改成 A/B/C/D
+
+
+class RateVersionOut(BaseModel):
+    id: int
+    version: int
+    effective_from: date
+    is_current: bool
+    rates: dict
+
+    class Config:
+        from_attributes = True
+
+
+class RateVersionCreate(BaseModel):
+    effective_from: date
+    rates: dict

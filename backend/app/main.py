@@ -22,8 +22,32 @@ from backend.app.auth import seed_admin
 app.include_router(auth_router.router)
 seed_admin()
 
+
+def seed_rate_table():
+    from sqlalchemy.orm import Session
+    from backend.app.db import SessionLocal, RateVersion
+    from salary_engine.rates import seed_rate_table as _seed
+    db = SessionLocal()
+    try:
+        if not db.query(RateVersion).first():
+            rt = _seed()  # 引擎种子
+            nested = {}
+            for (cls, bucket, tier), pct in rt.rates.items():
+                nested.setdefault(cls, {}).setdefault(bucket, {})[tier] = str(pct)
+            db.add(RateVersion(version=1, effective_from=rt.effective_from,
+                               is_current=True, rates=nested))
+            db.commit()
+    finally:
+        db.close()
+
+
+seed_rate_table()
+
 from backend.app.routers import products as products_router
 app.include_router(products_router.router)
 
 from backend.app.routers import stores as stores_router
 app.include_router(stores_router.router)
+
+from backend.app.routers import rates as rates_router
+app.include_router(rates_router.router)

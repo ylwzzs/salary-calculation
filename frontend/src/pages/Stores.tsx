@@ -53,7 +53,7 @@ export default function Stores() {
                { title: "主管", dataIndex: "supervisor" },
                { title: "操作", render: (_, r) => <a onClick={() => openEdit(r)}>编辑</a> },
              ]} />
-      <Modal title="门店" open={open} onOk={onSave} onCancel={() => setOpen(false)} destroyOnClose>
+      <Modal title="门店" open={open} onOk={onSave} onCancel={() => setOpen(false)} destroyOnHidden>
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="门店名称" rules={[{ required: true }]}><Input disabled={!!editing} /></Form.Item>
           <Form.Item name="group" label="组别"><Input placeholder="如 1组" /></Form.Item>

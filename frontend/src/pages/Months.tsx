@@ -71,7 +71,7 @@ export default function Months() {
         open={open}
         onOk={onCreate}
         onCancel={() => setOpen(false)}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical">
           <Form.Item name="month" label="月份 (YYYY-MM)" rules={[{ required: true }]}>

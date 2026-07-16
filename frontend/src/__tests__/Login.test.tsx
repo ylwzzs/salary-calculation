@@ -2,6 +2,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { AuthProvider, useAuth } from "../auth";
 import Login from "../pages/Login";
 
@@ -26,15 +27,17 @@ function Probe() {
 describe("Login", () => {
   it("logs in and sets user", async () => {
     render(
-      <AuthProvider>
-        <Login />
-        <Probe />
-      </AuthProvider>,
+      <MemoryRouter>
+        <AuthProvider>
+          <Login />
+          <Probe />
+        </AuthProvider>
+      </MemoryRouter>,
     );
     await userEvent.type(screen.getByPlaceholderText("账号"), "admin");
     await userEvent.type(screen.getByPlaceholderText("密码"), "admin");
     // antd Button auto-inserts a space between the two CJK chars ("登 录").
-    await userEvent.click(screen.getByText(/登\s*录/));
+    await userEvent.click(screen.getByRole("button", { name: /登\s*录/ }));
     expect(await screen.findByText("ok:admin")).toBeInTheDocument();
   });
 });

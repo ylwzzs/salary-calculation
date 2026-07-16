@@ -16,12 +16,20 @@ function Protected({ children }: { children: ReactNode }) {
   return children;
 }
 
+// 已登录则离开登录页
+function PublicOnly({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <Spin style={{ display: "flex", justifyContent: "center", marginTop: 80 }} />;
+  if (user) return <Navigate to="/months" replace />;
+  return children;
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route element={<Protected><Layout /></Protected>}>
             <Route path="/months" element={<Months />} />
             <Route path="/months/:month" element={<MonthWorkspace />} />

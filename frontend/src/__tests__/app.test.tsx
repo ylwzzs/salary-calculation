@@ -4,5 +4,5 @@ import App from "../App";
 
 test("renders title", () => {
   render(<App />);
-  expect(screen.getByText("牛奶提成系统")).toBeInTheDocument();
+  expect(screen.getByText("牛奶业绩提成系统")).toBeInTheDocument();
 });

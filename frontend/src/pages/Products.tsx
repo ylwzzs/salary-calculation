@@ -45,7 +45,7 @@ export default function Products() {
                { title: "销售成本", dataIndex: "cost" },
                { title: "操作", render: (_, r) => <a onClick={() => openEdit(r)}>编辑</a> },
              ]} />
-      <Modal title="商品" open={open} onOk={onSave} onCancel={() => setOpen(false)} destroyOnClose>
+      <Modal title="商品" open={open} onOk={onSave} onCancel={() => setOpen(false)} destroyOnHidden>
         <Form form={form} layout="vertical">
           <Form.Item name="barcode" label="条码" rules={[{ required: true }]}><Input disabled={!!editing} /></Form.Item>
           <Form.Item name="name" label="名称"><Input /></Form.Item>

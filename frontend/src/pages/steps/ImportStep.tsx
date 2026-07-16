@@ -25,7 +25,7 @@ export default function ImportStep({ month }: { month: string }) {
   });
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }}>
+    <Space orientation="vertical" style={{ width: "100%" }}>
       <div>销售流水 {sales && <Tag color="green">已上传</Tag>}</div>
       <Dragger {...upload("sales")}>
         <p className="ant-upload-drag-icon">

@@ -168,3 +168,26 @@ def results(month: str, _: User = Depends(current_user), db: Session = Depends(g
     salary = sorted(({"person": p, "commission": float(c)} for p, c in salary.items()),
                     key=lambda x: x["commission"], reverse=True)
     return {"salary": salary, "breakdown": breakdown}
+
+
+import tempfile
+import os as _os
+from fastapi import Response
+from salary_engine.exporter import write_excel
+
+
+@router.get("/months/{month}/export")
+def export(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
+    result = _run_compute(db, month)   # 重跑得到完整明细
+    fd, path = tempfile.mkstemp(suffix=".xlsx")
+    _os.close(fd)
+    try:
+        write_excel(result, path)
+        with open(path, "rb") as f:
+            data = f.read()
+    finally:
+        _os.remove(path)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="salary_{month}.xlsx"'})

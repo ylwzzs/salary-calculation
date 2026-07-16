@@ -63,3 +63,14 @@ def test_compute_and_result(tmp_path, client):
     res = client.get("/months/2026-06/results", headers=h).json()
     # 目标3/天0.1，卖3→达成3000%→GE_100；A低温高毛(单价3成本2=33%>15%)13%→0.39
     assert any(x["person"] == "高睿" and abs(x["commission"] - 0.39) < 0.01 for x in res["salary"])
+
+
+def test_results_and_export(tmp_path, client):
+    h = auth_header(client)
+    test_compute_and_result(tmp_path, client)  # 复用：已算好 2026-06
+    res = client.get("/months/2026-06/results", headers=h).json()
+    assert res["salary"] and res["breakdown"]
+    exp = client.get("/months/2026-06/export", headers=h)
+    assert exp.status_code == 200
+    ct = exp.headers.get("content-type", "")
+    assert "spreadsheet" in ct or ct.startswith("application/vnd")

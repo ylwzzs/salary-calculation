@@ -24,3 +24,6 @@ seed_admin()
 
 from backend.app.routers import products as products_router
 app.include_router(products_router.router)
+
+from backend.app.routers import stores as stores_router
+app.include_router(stores_router.router)

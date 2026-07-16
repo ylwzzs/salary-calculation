@@ -60,3 +60,6 @@ app.include_router(import_router.router)
 
 from backend.app.routers import months as months_router
 app.include_router(months_router.router)
+
+from backend.app.routers import workflow as workflow_router
+app.include_router(workflow_router.router)

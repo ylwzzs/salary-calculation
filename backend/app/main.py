@@ -11,3 +11,7 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+from backend.app.db import init_db
+init_db()

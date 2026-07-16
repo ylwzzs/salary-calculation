@@ -37,7 +37,7 @@ describe("Login", () => {
     await userEvent.type(screen.getByPlaceholderText("账号"), "admin");
     await userEvent.type(screen.getByPlaceholderText("密码"), "admin");
     // antd Button auto-inserts a space between the two CJK chars ("登 录").
-    await userEvent.click(screen.getByRole("button", { name: /登\s*录/ }));
+    await userEvent.click(screen.getByRole("button", { name: /继\s*续/ }));
     expect(await screen.findByText("ok:admin")).toBeInTheDocument();
   });
 });

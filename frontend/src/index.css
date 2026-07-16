@@ -1,9 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
-
 :root {
-  font-family: 'Fira Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -22,14 +21,13 @@ html, body, #root {
 
 #root { width: 100%; max-width: 100%; }
 
-/* 数字等宽：金额/百分比/提成列对齐 */
+/* 数字等宽对齐 */
 .tnum, .ant-statistic-content-value, .num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
-  font-family: 'Fira Code', 'Fira Sans', ui-monospace, monospace;
 }
 
-/* 微调滚动条 */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.18); border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(15, 23, 42, 0.32); }
+/* Notion 风细滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgba(55, 53, 47, 0.16); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(55, 53, 47, 0.28); }

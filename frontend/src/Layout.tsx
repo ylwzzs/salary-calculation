@@ -9,10 +9,10 @@ const { Header, Sider, Content } = AntLayout;
 
 function MilkMark() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M9 2h6l1.5 4H7.5L9 2Z" fill="#fff" opacity="0.92" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M9 2h6l1.5 4H7.5L9 2Z" fill="#fff" opacity="0.95" />
       <path d="M7.5 6h9l-1 2.2a4 4 0 0 0-.4 1.7V20a2 2 0 0 1-2 2h-2.2a2 2 0 0 1-2-2V9.9a4 4 0 0 0-.4-1.7L7.5 6Z" fill="#fff" />
-      <rect x="8.5" y="12" width="7" height="3.4" rx="0.6" fill="#3B82F6" />
+      <rect x="8.5" y="12" width="7" height="3.4" rx="0.6" fill="#37352F" />
     </svg>
   );
 }
@@ -45,32 +45,33 @@ export default function Layout() {
 
   return (
     <AntLayout style={{ height: "100vh" }}>
-      <Sider theme="dark" width={216} style={{ boxShadow: "2px 0 10px rgba(2,6,23,0.10)" }}>
+      <Sider width={232} style={{ background: "#F7F7F5", borderRight: "1px solid #E9E9E7" }}>
         <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-          {/* 品牌 */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 18px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: "linear-gradient(135deg,#2563EB,#3B82F6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {/* 品牌（Notion 工作区风格） */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 14px" }}>
+            <div style={{ width: 28, height: 28, borderRadius: 6, background: "#37352F", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <MilkMark />
             </div>
-            <div>
-              <div style={{ color: "#fff", fontWeight: 700, fontSize: 15, lineHeight: 1.1 }}>牛奶提成</div>
-              <div style={{ color: "#64748B", fontSize: 11 }}>业绩工资系统</div>
+            <div style={{ lineHeight: 1.15 }}>
+              <div style={{ color: "#37352F", fontWeight: 600, fontSize: 14 }}>牛奶业绩提成</div>
+              <div style={{ color: "#9B9A97", fontSize: 12 }}>workspace</div>
             </div>
           </div>
           {/* 导航 */}
-          <div style={{ flex: 1, overflow: "auto", paddingTop: 8 }}>
-            <Menu theme="dark" mode="inline" selectedKeys={[loc.pathname]} items={items}
-                  onClick={({ key }) => nav(key)} style={{ borderInlineEnd: "none", background: "transparent" }} />
+          <div style={{ flex: 1, overflow: "auto", padding: "4px 8px" }}>
+            <Menu mode="inline" selectedKeys={[loc.pathname]} items={items}
+                  onClick={({ key }) => nav(key)} style={{ background: "transparent", borderInlineEnd: "none" }} />
           </div>
           {/* 用户卡 */}
-          <div style={{ padding: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 10, background: "rgba(255,255,255,0.04)" }}>
-              <Avatar size={32} icon={<UserOutlined />} style={{ background: "#2563EB", flex: "0 0 32px" }} />
+          <div style={{ padding: 10, borderTop: "1px solid #EFEFED" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", borderRadius: 6, cursor: "default" }}
+                 className="notion-user">
+              <Avatar size={26} icon={<UserOutlined />} style={{ background: "#EBEBEA", color: "#787774", flex: "0 0 26px" }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: "#E2E8F0", fontSize: 13, fontWeight: 600, lineHeight: 1.2 }}>{user?.username}</div>
-                <div style={{ color: "#64748B", fontSize: 11 }}>管理员</div>
+                <div style={{ color: "#37352F", fontSize: 13, fontWeight: 500, lineHeight: 1.2 }}>{user?.username}</div>
+                <div style={{ color: "#9B9A97", fontSize: 11 }}>管理员</div>
               </div>
-              <Button type="text" size="small" icon={<LogoutOutlined />} style={{ color: "#94A3B8" }}
+              <Button type="text" size="small" icon={<LogoutOutlined />} style={{ color: "#9B9A97" }}
                       onClick={() => { logout(); nav("/login"); }} />
             </div>
           </div>
@@ -78,14 +79,13 @@ export default function Layout() {
       </Sider>
 
       <AntLayout>
-        <Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-          paddingInline: 24, background: "#fff", borderBottom: "1px solid #E2E8F0", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+        <Header style={{ display: "flex", alignItems: "center", borderBottom: "1px solid #E9E9E7" }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#0F172A", lineHeight: 1.2 }}>{title}</div>
-            {sub && <div style={{ fontSize: 12, color: "#94A3B8" }}>{sub}</div>}
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#37352F", lineHeight: 1.2 }}>{title}</div>
+            {sub && <div style={{ fontSize: 12.5, color: "#9B9A97" }}>{sub}</div>}
           </div>
         </Header>
-        <Content style={{ padding: 24, overflow: "auto", background: "#F8FAFC" }}>
+        <Content style={{ padding: 28, overflow: "auto", background: "#F7F7F5" }}>
           <Outlet />
         </Content>
       </AntLayout>

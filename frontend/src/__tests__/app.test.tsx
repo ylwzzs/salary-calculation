@@ -2,7 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import App from "../App";
 
-test("renders title", () => {
+test("renders login form when unauthenticated", () => {
   render(<App />);
-  expect(screen.getByText("牛奶业绩提成系统")).toBeInTheDocument();
+  expect(screen.getByPlaceholderText("账号")).toBeInTheDocument();
 });

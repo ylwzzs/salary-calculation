@@ -15,3 +15,9 @@ def health():
 
 from backend.app.db import init_db
 init_db()
+
+from backend.app.routers import auth_router
+from backend.app.auth import seed_admin
+
+app.include_router(auth_router.router)
+seed_admin()

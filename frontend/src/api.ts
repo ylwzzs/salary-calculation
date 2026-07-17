@@ -174,3 +174,48 @@ export const salaryPolicyApi = {
   activate: (id: number) => http.post<SalaryPolicyVersion>(`/salary-policies/${id}/activate`).then(r => r.data),
   delete: (id: number) => http.delete(`/salary-policies/${id}`).then(r => r.data),
 };
+
+
+// —— 计算异常管理 ——
+export interface Anomaly {
+  id: number;
+  month: string;
+  anomaly_type: string;
+  entity_type?: string;
+  entity_id?: string;
+  description: string;
+  status: "pending" | "ignored" | "resolved";
+  resolution?: string;
+  created_at: string;
+  resolved_at?: string;
+}
+
+export const anomalyApi = {
+  list: (month: string, anomalyStatus?: string) =>
+    http.get<Anomaly[]>(`/anomalies/month/${month}${anomalyStatus ? `?anomaly_status=${anomalyStatus}` : ""}`).then(r => r.data),
+  resolve: (id: number, resolution?: string) =>
+    http.post<Anomaly>(`/anomalies/${id}/resolve`, { resolution }).then(r => r.data),
+  ignore: (id: number) =>
+    http.post<Anomaly>(`/anomalies/${id}/ignore`).then(r => r.data),
+  clear: (month: string) =>
+    http.delete<{ deleted: number }>(`/anomalies/month/${month}`).then(r => r.data),
+};
+
+// —— 月份步骤状态 ——
+export const monthStepApi = {
+  update: (month: string, step: string, stepData?: Record<string, boolean>) =>
+    http.put(`/months/${month}/step`, { step, step_data: stepData }).then(r => r.data),
+  reset: (month: string) =>
+    http.post(`/months/${month}/reset`).then(r => r.data),
+};
+
+// —— 排班拖拽 ——
+export const dutyTransferApi = {
+  transfer: (month: string, fromStore: string, toStore: string, date: string, salesperson: string) =>
+    http.post(`/months/${month}/duty/transfer`, {
+      from_store: fromStore,
+      to_store: toStore,
+      date,
+      salesperson,
+    }).then(r => r.data),
+};

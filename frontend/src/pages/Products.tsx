@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Edit3, Tag, X, CheckSquare, Square } from "lucide-react";
+import { Plus, Search, Edit3, Tag, X, CheckSquare, Square, Trash2 } from "lucide-react";
 import { Block, BlockTitle, BlockDescription } from "@/components/Block";
 import { toast } from "sonner";
 
@@ -49,6 +49,18 @@ export default function Products() {
     } catch { toast.error("批量操作失败"); }
   };
 
+  const batchDelete = async () => {
+    const items = Array.from(selected);
+    if (!confirm(`确定删除 ${items.length} 个商品？此操作不可撤销。`)) return;
+    try {
+      for (const bc of items) {
+        await productsApi.remove(bc);
+      }
+      toast.success(`已删除 ${items.length} 个商品`);
+      setSelected(new Set()); load();
+    } catch { toast.error("删除失败"); }
+  };
+
   const save = async () => {
     if (!form.barcode) { toast.error("条码不能为空"); return; }
     await productsApi.upsert({ ...form, exclude_commission: form.exclude_commission ?? false } as Product);
@@ -77,6 +89,9 @@ export default function Products() {
           </Button>
           <Button size="sm" variant="outline" onClick={() => batchSet(false)}>
             取消标记
+          </Button>
+          <Button size="sm" variant="ghost" onClick={batchDelete}>
+            <Trash2 className="w-3.5 h-3.5 mr-1 text-red-500" />删除
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
             <X className="w-3.5 h-3.5" />

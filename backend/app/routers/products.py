@@ -26,3 +26,14 @@ def upsert_product(barcode: str, body: ProductUpsert,
         setattr(p, f, getattr(body, f))
     db.commit()
     return p
+
+
+@router.delete("/{barcode}")
+def delete_product(barcode: str,
+                   _: User = Depends(current_user), db: Session = Depends(get_db)):
+    p = db.get(Product, barcode)
+    if p is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "商品不存在")
+    db.delete(p)
+    db.commit()
+    return {"deleted": barcode}

@@ -51,6 +51,7 @@ export interface Product {
 export const productsApi = {
   list: () => http.get<Product[]>("/products").then((r) => r.data),
   upsert: (p: Product) => http.put<Product>(`/products/${p.barcode}`, p).then((r) => r.data),
+  remove: (barcode: string) => http.delete(`/products/${barcode}`).then((r) => r.data),
 };
 
 export interface Store {

@@ -76,7 +76,7 @@ export default function Stores() {
             <div><Label className="text-[13px]">类别</Label><Select value={form.store_class ?? ""} onValueChange={(v) => setForm({ ...form, store_class: v })}><SelectTrigger className="mt-1 h-9"><SelectValue placeholder="选择" /></SelectTrigger><SelectContent>{CLASSES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
             <div><Label className="text-[13px]">主管</Label><Input value={form.supervisor ?? ""} onChange={(e) => setForm({ ...form, supervisor: e.target.value })} className="mt-1 h-9" /></div>
           </div>
-          <DialogFooter><Button onClick={save} className="bg-zinc-900 hover:bg-zinc-800">保存</Button></DialogFooter>
+          <DialogFooter><Button onClick={save} className="">保存</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

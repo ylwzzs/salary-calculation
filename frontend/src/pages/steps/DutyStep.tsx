@@ -55,7 +55,7 @@ export default function DutyStep({ month }: { month: string }) {
       <div className="flex items-center gap-3">
         <Button variant="outline" size="sm" onClick={infer} disabled={loading}>重新推断</Button>
         {multiCount > 0 ? <Badge className="bg-red-100 text-red-700 border-red-200">{multiCount} 个多人当天</Badge> : <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">无冲突</Badge>}
-        <Button size="sm" onClick={confirm} className="bg-zinc-900 hover:bg-zinc-800 ml-auto">确认当班</Button>
+        <Button size="sm" onClick={confirm} className=" ml-auto">确认当班</Button>
       </div>
       <div className="rounded-lg border border-zinc-200 bg-white overflow-x-auto">
         <table className="w-full text-sm">

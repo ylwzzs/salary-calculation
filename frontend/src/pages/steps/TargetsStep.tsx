@@ -29,7 +29,7 @@ export default function TargetsStep({ month }: { month: string }) {
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
-        <Button size="sm" onClick={save} className="bg-zinc-900 hover:bg-zinc-800">保存目标</Button>
+        <Button size="sm" onClick={save} className="">保存目标</Button>
       </div>
       {loading ? <p className="text-sm text-zinc-400">加载中...</p> : (
         <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">

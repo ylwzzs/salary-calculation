@@ -57,7 +57,7 @@ export default function Months() {
             <div><Label className="text-[13px]">月份 (YYYY-MM)</Label><Input value={month} onChange={(e) => setMonth(e.target.value)} placeholder="2026-07" className="mt-1 h-9" /></div>
             <div><Label className="text-[13px]">复制上月目标 (可选)</Label><Input value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)} placeholder="2026-06" className="mt-1 h-9" /></div>
           </div>
-          <DialogFooter><Button onClick={create} className="bg-zinc-900 hover:bg-zinc-800">创建</Button></DialogFooter>
+          <DialogFooter><Button onClick={create} className="">创建</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -34,7 +34,7 @@ export default function Products() {
             <BlockTitle>商品档案 <Badge variant="secondary" className="ml-1">{rows.length}</Badge></BlockTitle>
             <BlockDescription>乳品主数据与销售成本，用于毛利率分档</BlockDescription>
           </div>
-          <Button size="sm" onClick={() => openEdit()} className="bg-zinc-900 hover:bg-zinc-800">
+          <Button size="sm" onClick={() => openEdit()} className="">
             <Plus className="w-4 h-4 mr-1" />新增
           </Button>
         </div>
@@ -80,7 +80,7 @@ export default function Products() {
             <div><Label className="text-[13px] text-zinc-500">分类</Label><Input value={form.category ?? ""} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 h-9" placeholder="常温奶 / 低温奶" /></div>
             <div><Label className="text-[13px] text-zinc-500">销售成本</Label><Input type="number" value={form.cost ?? ""} onChange={(e) => setForm({ ...form, cost: e.target.value ? Number(e.target.value) : null })} className="mt-1 h-9" /></div>
           </div>
-          <DialogFooter><Button onClick={save} className="bg-zinc-900 hover:bg-zinc-800">保存</Button></DialogFooter>
+          <DialogFooter><Button onClick={save} className="">保存</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

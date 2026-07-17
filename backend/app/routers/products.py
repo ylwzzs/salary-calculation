@@ -22,7 +22,7 @@ def upsert_product(barcode: str, body: ProductUpsert,
     if p is None:
         p = Product(barcode=barcode)
         db.add(p)
-    for f in ("name", "spec", "category", "cost"):
+    for f in ("name", "spec", "category", "cost", "exclude_commission"):
         setattr(p, f, getattr(body, f))
     db.commit()
     return p

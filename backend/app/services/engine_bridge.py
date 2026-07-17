@@ -25,7 +25,8 @@ def rates_from_db(db) -> RateTable:
 
 def products_from_db(db) -> dict:
     return {r.barcode: Product(r.barcode, r.name, r.spec, r.category,
-                               Decimal(r.cost) if r.cost is not None else None)
+                               Decimal(r.cost) if r.cost is not None else None,
+                               bool(r.exclude_commission))
             for r in db.query(ProductRow).all()}
 
 

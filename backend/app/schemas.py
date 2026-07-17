@@ -8,7 +8,8 @@ class ProductOut(BaseModel):
     name: str | None = None
     spec: str | None = None
     category: str | None = None
-    cost: float | None = None  # float → JSON 不带尾零（如7.623而非7.6230000000）
+    cost: float | None = None
+    exclude_commission: bool = False  # 不计入提成
 
     class Config:
         from_attributes = True
@@ -20,6 +21,7 @@ class ProductUpsert(BaseModel):
     spec: str | None = None
     category: str | None = None
     cost: Decimal | None = None
+    exclude_commission: bool = False
 
 
 class StoreOut(BaseModel):

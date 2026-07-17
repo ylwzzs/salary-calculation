@@ -25,6 +25,7 @@ class Product(Base):
     spec = Column(String)
     category = Column(String)            # 常温奶 | 低温奶
     cost = Column(Numeric, nullable=True)  # 销售成本，匹配不到为 None
+    exclude_commission = Column(Boolean, default=False)  # 不计入提成
 
 
 class Store(Base):

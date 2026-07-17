@@ -12,6 +12,7 @@ class Product:
     spec: str
     category: str            # '常温奶' | '低温奶'
     cost: Optional[Decimal]  # 销售成本(单件)，匹配不到为 None
+    exclude_commission: bool = False  # 不计入提成
 
 
 @dataclass(frozen=True)

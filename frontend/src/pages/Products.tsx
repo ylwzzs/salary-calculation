@@ -64,7 +64,12 @@ export default function Products() {
                     <TableCell className="font-mono text-xs text-zinc-500">{r.barcode}</TableCell>
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell className="text-zinc-500">{r.spec}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[11px] font-normal">{r.category}</Badge></TableCell>
+                    <TableCell>
+                      {r.exclude_commission
+                        ? <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">不计提成</Badge>
+                        : <Badge variant="outline" className="text-[11px] font-normal">{r.category}</Badge>
+                      }
+                    </TableCell>
                     <TableCell className="text-right tnum">{r.cost != null ? `¥${r.cost}` : "—"}</TableCell>
                     <TableCell className="text-right">
                       <button onClick={(e) => { e.stopPropagation(); openEdit(r); }}
@@ -94,6 +99,11 @@ export default function Products() {
             <div><Label className="text-[13px] text-zinc-500">规格</Label><Input value={form.spec ?? ""} onChange={(e) => setForm({ ...form, spec: e.target.value })} className="mt-1 h-9" /></div>
             <div><Label className="text-[13px] text-zinc-500">分类</Label><Input value={form.category ?? ""} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 h-9" placeholder="常温奶 / 低温奶" /></div>
             <div><Label className="text-[13px] text-zinc-500">销售成本</Label><Input type="number" value={form.cost ?? ""} onChange={(e) => setForm({ ...form, cost: e.target.value ? Number(e.target.value) : null })} className="mt-1 h-9" /></div>
+            <div className="flex items-center gap-2 pt-1">
+              <input type="checkbox" id="exclude" checked={form.exclude_commission ?? false}
+                onChange={(e) => setForm({ ...form, exclude_commission: e.target.checked })} className="rounded border-zinc-300" />
+              <Label htmlFor="exclude" className="text-[13px] text-zinc-500 cursor-pointer">不计入提成</Label>
+            </div>
           </div>
           <DialogFooter><Button onClick={save}>保存</Button></DialogFooter>
         </DialogContent>

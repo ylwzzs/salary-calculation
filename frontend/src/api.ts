@@ -45,6 +45,7 @@ export interface Product {
   spec?: string;
   category?: string;
   cost?: number | null;
+  exclude_commission?: boolean;
 }
 
 export const productsApi = {

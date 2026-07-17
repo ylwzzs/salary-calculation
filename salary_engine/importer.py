@@ -46,26 +46,33 @@ def _parse_date(s):
 
 
 def load_products_from_rows(info_rows, cost_rows=None):
-    """商品信息表 + 销售成本表 → {barcode: Product}，按条码合并成本。"""
+    """商品信息表 + 销售成本表 → {barcode: Product}，两表全合并。
+    信息表补分类，成本表补成本+名称，缺成本的Product.cost=None。"""
     cost_rows = cost_rows or []
     ii, ih = _find_header(info_rows, "国际条码")
     idx = {_norm(c): k for k, c in enumerate(ih) if c is not None}
     bc_i, name_i, spec_i, cat_i = idx["国际条码"], idx["商品名称"], idx["规格"], idx["类别"]
-    cost_map = {}
+    # 成本表 → {barcode: (名称, 成本)}
+    cost_map: dict[str, tuple[str, Decimal]] = {}
     if cost_rows:
         ci, ch = _find_header(cost_rows, "商品条码")
         cidx = {_norm(c): k for k, c in enumerate(ch) if c is not None}
-        cbc, ccost = cidx["商品条码"], cidx["销售成本"]
+        cbc, cn, cc = cidx["商品条码"], cidx["商品名称"], cidx["销售成本"]
         for r in cost_rows[ci + 1:]:
             if r and len(r) > cbc and r[cbc] not in (None, ""):
-                cost_map[str(r[cbc])] = _D(r[ccost])
+                cost_map[str(r[cbc])] = (str(r[cn]) if cn is not None else "", _D(r[cc]))
     products = {}
+    # 1) 信息表行（补分类）
     for r in info_rows[ii + 1:]:
-        if not r or len(r) <= bc_i or r[bc_i] in (None, ""):
-            continue
+        if not r or len(r) <= bc_i or r[bc_i] in (None, ""): continue
         bc = str(r[bc_i])
+        cm = cost_map.get(bc)
         products[bc] = Product(bc, str(r[name_i]), str(r[spec_i]), str(r[cat_i]),
-                               cost_map.get(bc))
+                               cm[1] if cm else None)
+    # 2) 销售成本表里有、信息表里没有的条码（补进档案，名称来自成本表，无分类）
+    for bc, (cn, cv) in cost_map.items():
+        if bc not in products:
+            products[bc] = Product(bc, cn or None, None, None, cv)
     return products
 
 

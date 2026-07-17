@@ -61,8 +61,9 @@ def compute(sales_lines, products, stores, targets, rate_table,
         ln = replace(ln, store=clean_store(ln.store))  # 仅改门店名，保留其余字段
         if (ln.receipt, ln.barcode) in gift_keys:
             continue  # 赠送剔除
-        if ln.barcode not in products:
-            continue  # 非乳品
+        product = products.get(ln.barcode)
+        if product is None or product.exclude_commission:
+            continue  # 非乳品 或 不计入提成
         (returns if ln.is_return else sales).append(ln)
 
     # 2) 按 (receipt, barcode) 聚合销售；精确匹配的退货(src_order+条码命中)并入同组，

@@ -131,7 +131,7 @@ export default function Products() {
                     <TableCell className="font-mono text-xs text-zinc-500">{r.barcode}</TableCell>
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell className="text-zinc-500">{r.spec}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[11px] font-normal">{r.category}</Badge></TableCell>
+                    <TableCell>{r.category ? <Badge variant="outline" className="text-[11px] font-normal">{r.category}</Badge> : <span className="text-zinc-300">—</span>}</TableCell>
                     <TableCell>
                       {r.exclude_commission
                         ? <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">不计提成</Badge>

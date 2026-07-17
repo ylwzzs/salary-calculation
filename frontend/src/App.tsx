@@ -10,6 +10,7 @@ import Stores from "./pages/Stores";
 import Months from "./pages/Months";
 import MonthWorkspace from "./pages/MonthWorkspace";
 import Targets from "./pages/Targets";
+import SalaryPolicy from "./pages/SalaryPolicy";
 
 function Protected({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
           <Route element={<Protected><Layout /></Protected>}>
             <Route path="/months" element={<Months />} />
             <Route path="/months/:month" element={<MonthWorkspace />} />
+            <Route path="/salary-policy" element={<SalaryPolicy />} />
             <Route path="/targets" element={<Targets />} />
             <Route path="/products" element={<Products />} />
             <Route path="/stores" element={<Stores />} />

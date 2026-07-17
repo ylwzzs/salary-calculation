@@ -1,10 +1,11 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
-import { Calendar, Package, Store, LogOut, User, Target } from "lucide-react";
+import { Calendar, Package, Store, LogOut, User, Target, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { path: "/months", label: "月度计算", icon: Calendar },
+  { path: "/salary-policy", label: "薪酬制度", icon: FileSpreadsheet },
   { path: "/targets", label: "月度目标", icon: Target },
   { path: "/products", label: "商品档案", icon: Package },
   { path: "/stores", label: "门店信息", icon: Store },
@@ -12,6 +13,7 @@ const nav = [
 
 const titles: Record<string, string> = {
   "/months": "月度计算",
+  "/salary-policy": "薪酬制度",
   "/products": "商品档案",
   "/stores": "门店信息",
 };

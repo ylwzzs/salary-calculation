@@ -87,3 +87,44 @@ class MonthOut(BaseModel):
 class MonthCreate(BaseModel):
     month: str
     copy_from: str | None = None
+
+
+from typing import Dict, Any
+
+
+class SalaryPolicyContent(BaseModel):
+    margin_rules: Dict[str, Any]
+    commission_rates: Dict[str, Any]
+
+
+class SalaryPolicyOut(BaseModel):
+    id: int
+    version: int
+    effective_from: date
+    is_current: bool
+    created_at: str
+    created_by: str | None = None
+    content: SalaryPolicyContent
+    note: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class SalaryPolicyCreate(BaseModel):
+    effective_from: date
+    note: str | None = None
+    content: SalaryPolicyContent
+
+
+class SalaryPolicySummary(BaseModel):
+    id: int
+    version: int
+    effective_from: date
+    is_current: bool
+    created_by: str | None = None
+    note: str | None = None
+    used_by_months: list[str] = []
+
+    class Config:
+        from_attributes = True

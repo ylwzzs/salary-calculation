@@ -2,9 +2,9 @@
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, Date, DateTime, JSON,
-    UniqueConstraint, create_engine,
+    UniqueConstraint, ForeignKey, create_engine,
 )
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 from backend.app.config import DB_URL
 
@@ -56,6 +56,19 @@ class RateVersion(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class SalaryPolicyVersion(Base):
+    __tablename__ = "salary_policy_versions"
+
+    id = Column(Integer, primary_key=True)
+    version = Column(Integer, nullable=False, unique=True)
+    effective_from = Column(Date, nullable=False)
+    is_current = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    created_by = Column(String(50))
+    content = Column(JSON, nullable=False)
+    note = Column(String(200))
+
+
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
@@ -79,6 +92,8 @@ class Month(Base):
     sales_file = Column(String, nullable=True)   # 上传的销售流水路径
     gifts_file = Column(String, nullable=True)   # 上传的让利明细路径
     rate_version_id = Column(Integer, nullable=True)  # 计算时锁定的比例表版本
+    policy_version_id = Column(Integer, ForeignKey("salary_policy_versions.id"))
+    policy_version = relationship("SalaryPolicyVersion")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

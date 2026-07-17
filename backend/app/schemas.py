@@ -79,6 +79,8 @@ class MonthOut(BaseModel):
     sales_file: str | None = None
     gifts_file: str | None = None
     rate_version_id: int | None = None
+    current_step: str | None = None
+    step_data: dict | None = None
 
     class Config:
         from_attributes = True

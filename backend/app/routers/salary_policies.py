@@ -11,6 +11,25 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Table as RLTable, TableStyle, Paragraph, Spacer
 from PIL import Image as PILImage
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import os
+
+# 注册中文字体
+FONT_PATHS = [
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+]
+CHINESE_FONT = None
+for fp in FONT_PATHS:
+    if os.path.exists(fp):
+        try:
+            pdfmetrics.registerFont(TTFont("Chinese", fp, subfontIndex=0))
+            CHINESE_FONT = "Chinese"
+            break
+        except Exception:
+            continue
 
 from backend.app.auth import current_user
 from backend.app.db import get_db, SalaryPolicyVersion, Month, User
@@ -256,9 +275,10 @@ def export_excel(
 def _build_policy_elements(policy):
     """构建 PDF 元素列表（毛利率规则 + 提成比例表）"""
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("PolicyTitle", parent=styles["Title"], fontSize=16, spaceAfter=6)
-    heading_style = ParagraphStyle("PolicyHeading", parent=styles["Heading2"], fontSize=12, spaceAfter=6, spaceBefore=10)
-    meta_style = ParagraphStyle("PolicyMeta", parent=styles["Normal"], fontSize=9, textColor=colors.grey)
+    font_name = CHINESE_FONT or "Helvetica"
+    title_style = ParagraphStyle("PolicyTitle", parent=styles["Title"], fontSize=16, spaceAfter=6, fontName=font_name)
+    heading_style = ParagraphStyle("PolicyHeading", parent=styles["Heading2"], fontSize=12, spaceAfter=6, spaceBefore=10, fontName=font_name)
+    meta_style = ParagraphStyle("PolicyMeta", parent=styles["Normal"], fontSize=9, textColor=colors.grey, fontName=font_name)
 
     elements = []
     elements.append(Paragraph(f"薪酬制度 v{policy.version}", title_style))
@@ -287,6 +307,7 @@ def _build_policy_elements(policy):
         ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
         ("ALIGN", (1, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWHEIGHT", (0, 0), (-1, -1), 22),
@@ -322,6 +343,7 @@ def _build_policy_elements(policy):
         ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
         ("ALIGN", (2, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWHEIGHT", (0, 0), (-1, -1), 18),

@@ -1,13 +1,121 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from decimal import Decimal
 
 from backend.app.auth import current_user
-from backend.app.db import get_db, MonthlyTarget, User
+from backend.app.db import get_db, MonthlyTarget, Store, User
 from backend.app.schemas import TargetBatch
 
 router = APIRouter(tags=["targets"])
 
 
+class TargetOut(BaseModel):
+    id: int
+    month: str
+    store: str
+    target: float
+
+    class Config:
+        from_attributes = True
+
+
+class TargetCreate(BaseModel):
+    month: str
+    store: str
+    target: Decimal
+
+
+# 全局月度目标管理
+@router.get("/targets", response_model=list[TargetOut])
+def list_targets(month: str = None, _: User = Depends(current_user), db: Session = Depends(get_db)):
+    """获取目标列表，可按月份过滤"""
+    query = db.query(MonthlyTarget)
+    if month:
+        query = query.filter_by(month=month)
+    return query.order_by(MonthlyTarget.month, MonthlyTarget.store).all()
+
+
+@router.post("/targets", response_model=TargetOut, status_code=status.HTTP_201_CREATED)
+def create_target(body: TargetCreate, _: User = Depends(current_user), db: Session = Depends(get_db)):
+    """创建单条目标"""
+    # 检查门店是否存在
+    store = db.get(Store, body.store)
+    if not store:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "门店不存在")
+
+    # 检查是否已存在
+    existing = db.query(MonthlyTarget).filter_by(month=body.month, store=body.store).first()
+    if existing:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "该门店当月目标已存在")
+
+    target = MonthlyTarget(month=body.month, store=body.store, target=body.target)
+    db.add(target)
+    db.commit()
+    db.refresh(target)
+    return target
+
+
+@router.post("/targets/batch", status_code=status.HTTP_201_CREATED)
+def batch_create_targets(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
+    """批量创建目标，自动代入参与考核的门店"""
+    # 获取所有参与考核的门店
+    stores = db.query(Store).filter(Store.exclude_assessment == False).all()
+
+    if not stores:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "没有参与考核的门店")
+
+    # 检查月份是否已有目标
+    existing_count = db.query(MonthlyTarget).filter_by(month=month).count()
+    if existing_count > 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"该月份已有 {existing_count} 条目标，请先清空")
+
+    # 批量创建
+    created = []
+    for store in stores:
+        target = MonthlyTarget(month=month, store=store.name, target=0)
+        db.add(target)
+        created.append(store.name)
+
+    db.commit()
+    return {"created": len(created), "stores": created}
+
+
+@router.put("/targets/{target_id}", response_model=TargetOut)
+def update_target(target_id: int, target_value: Decimal,
+                  _: User = Depends(current_user), db: Session = Depends(get_db)):
+    """更新目标金额"""
+    target = db.get(MonthlyTarget, target_id)
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "目标不存在")
+
+    target.target = target_value
+    db.commit()
+    db.refresh(target)
+    return target
+
+
+@router.delete("/targets/{target_id}")
+def delete_target(target_id: int, _: User = Depends(current_user), db: Session = Depends(get_db)):
+    """删除单条目标"""
+    target = db.get(MonthlyTarget, target_id)
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "目标不存在")
+
+    db.delete(target)
+    db.commit()
+    return {"deleted": target_id}
+
+
+@router.delete("/targets/month/{month}")
+def delete_month_targets(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
+    """删除整月目标"""
+    count = db.query(MonthlyTarget).filter_by(month=month).delete()
+    db.commit()
+    return {"deleted": count}
+
+
+# 保留原有API兼容性
 @router.get("/months/{month}/targets")
 def get_targets(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
     rows = db.query(MonthlyTarget).filter_by(month=month).all()

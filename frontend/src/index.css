@@ -3,13 +3,29 @@
 
 @theme {
   --font-sans: "DM Sans", system-ui, sans-serif;
+
+  --color-background: #F8FAFC;
+  --color-foreground: #0F172A;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #0F172A;
+  --color-border: #E2E8F0;
+  --color-input: #E2E8F0;
+  --color-ring: #1E40AF;
+  --color-muted: #F1F5F9;
+  --color-muted-foreground: #64748B;
+
   --color-primary: #1E40AF;
-  --color-primary-light: #3B82F6;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: #F1F5F9;
+  --color-secondary-foreground: #0F172A;
+  --color-accent: #059669;
+  --color-accent-foreground: #FFFFFF;
+  --color-destructive: #DC2626;
+  --color-destructive-foreground: #FFFFFF;
+
   --color-success: #16A34A;
   --color-warning: #D97706;
   --color-error: #DC2626;
-  --color-accent: #059669;
-  --color-financial: #059669;
 }
 
 /* 数字等宽对齐 */

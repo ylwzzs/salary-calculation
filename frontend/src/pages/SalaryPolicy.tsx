@@ -130,6 +130,37 @@ export default function SalaryPolicy() {
     }
   };
 
+  const handleExportExcel = async () => {
+    if (!currentVersion) return;
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`/api/salary-policies/${currentVersion.id}/export/excel`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("导出失败");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `salary_policy_v${currentVersion.version}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      toast.success("导出成功");
+    } catch {
+      toast.error("导出失败");
+    }
+  };
+
+  const handleExportPDF = () => {
+    toast.info("PDF导出功能开发中，请使用Excel导出");
+  };
+
+  const handleCopyImage = () => {
+    toast.info("图片复制功能开发中，请使用Excel导出");
+  };
+
   const updateRate = (cls: string, bucket: string, tier: string, value: string) => {
     setEditContent((prev) => {
       if (!prev) return prev;
@@ -294,15 +325,15 @@ export default function SalaryPolicy() {
                 </Button>
                 {currentVersion && (
                   <>
-                    <Button size="sm" variant="outline" disabled title="功能开发中">
+                    <Button size="sm" variant="outline" onClick={handleExportExcel}>
                       <FileSpreadsheet className="w-3.5 h-3.5 mr-1" />
                       导出Excel
                     </Button>
-                    <Button size="sm" variant="outline" disabled title="功能开发中">
+                    <Button size="sm" variant="outline" onClick={handleExportPDF}>
                       <FileText className="w-3.5 h-3.5 mr-1" />
                       导出PDF
                     </Button>
-                    <Button size="sm" variant="outline" disabled title="功能开发中">
+                    <Button size="sm" variant="outline" onClick={handleCopyImage}>
                       <Image className="w-3.5 h-3.5 mr-1" />
                       复制图片
                     </Button>

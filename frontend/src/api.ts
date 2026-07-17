@@ -99,6 +99,8 @@ export const targetsApi = {
     http.post<Target>("/targets", data).then((r) => r.data),
   batchCreate: (month: string) =>
     http.post<{ created: number; stores: string[] }>(`/targets/batch?month=${month}`).then((r) => r.data),
+  batchSet: (month: string, items: { store: string; target: string }[]) =>
+    http.put(`/months/${month}/targets`, { items }).then((r) => r.data),
   update: (id: number, target: number) =>
     http.put<Target>(`/targets/${id}?target_value=${target}`).then((r) => r.data),
   delete: (id: number) => http.delete(`/targets/${id}`).then((r) => r.data),

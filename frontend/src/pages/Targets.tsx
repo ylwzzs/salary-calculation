@@ -1,111 +1,121 @@
 import { useEffect, useState } from "react";
-import { targetsApi, type Target } from "../api";
+import { targetsApi, storesApi, type Target, type Store } from "../api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, RefreshCw, Calendar, CheckSquare, Square, X } from "lucide-react";
+import { Plus, Calendar, Save, X, Edit3 } from "lucide-react";
 import { Block, BlockTitle, BlockDescription } from "@/components/Block";
 import { toast } from "sonner";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+interface TargetRow {
+  store: string;
+  target: number;
+  exists: boolean;
+  id?: number;
+}
 
 export default function Targets() {
-  const [rows, setRows] = useState<Target[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState("");
   const [months, setMonths] = useState<string[]>([]);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selectedMonth, setSelectedMonth] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const [rows, setRows] = useState<TargetRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const load = async () => {
-    setLoading(true);
+  // 加载所有月份
+  const loadMonths = async () => {
     try {
-      const data = await targetsApi.list(selectedMonth || undefined);
-      setRows(data);
-
-      // 提取所有月份
+      const data = await targetsApi.list();
       const uniqueMonths = Array.from(new Set(data.map(t => t.month))).sort().reverse();
       setMonths(uniqueMonths);
     } catch {
-      toast.error("加载失败");
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    loadMonths();
+  }, []);
+
+  // 加载某月份的目标数据
+  const loadMonthData = async (month: string) => {
+    if (!month) return;
+
+    setLoading(true);
+    try {
+      // 获取所有参与考核的门店
+      const stores = await storesApi.list();
+      const activeStores = stores.filter(s => !s.exclude_assessment);
+
+      // 获取该月份已有的目标
+      const targets = await targetsApi.list(month);
+
+      // 合并：门店列表 + 目标值
+      const targetMap = new Map(targets.map(t => [t.store, t]));
+      const targetRows = activeStores.map(store => ({
+        store: store.name,
+        target: targetMap.get(store.name)?.target || 0,
+        exists: targetMap.has(store.name),
+        id: targetMap.get(store.name)?.id
+      }));
+
+      setRows(targetRows.sort((a, b) => a.store.localeCompare(b.store)));
+    } catch {
+      toast.error("加载数据失败");
     } finally {
       setLoading(false);
     }
   };
 
+  // 选择月份
   useEffect(() => {
-    load();
+    if (selectedMonth && !editMode) {
+      loadMonthData(selectedMonth);
+    }
   }, [selectedMonth]);
 
-  const allChecked = rows.length > 0 && rows.every(r => selected.has(r.id));
-  const toggleAll = () => {
-    if (allChecked) setSelected(new Set());
-    else setSelected(new Set(rows.map(r => r.id)));
-  };
-  const toggle = (id: number) => {
-    setSelected(s => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
+  // 新建目标
+  const handleCreate = () => {
+    setEditMode(true);
+    loadMonthData(selectedMonth);
   };
 
-  const handleBatchCreate = async () => {
+  // 保存目标
+  const handleSave = async () => {
     if (!selectedMonth) {
       toast.error("请先选择月份");
       return;
     }
 
+    setSaving(true);
     try {
-      const result = await targetsApi.batchCreate(selectedMonth);
-      toast.success(`已创建 ${result.created} 条目标`);
-      load();
-    } catch (err: unknown) {
-      const error = err as { response?: { data?: { detail?: string } } };
-      toast.error(error.response?.data?.detail || "创建失败");
+      // 批量保存
+      const items = rows.map(r => ({ store: r.store, target: String(r.target) }));
+      await targetsApi.batchSet(selectedMonth, items);
+      toast.success(`已保存 ${rows.length} 个门店目标`);
+      setEditMode(false);
+      loadMonths();
+    } catch {
+      toast.error("保存失败");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDeleteSelected = async () => {
-    const items = Array.from(selected);
-    if (!confirm(`确定删除 ${items.length} 条目标？`)) return;
-
-    try {
-      for (const id of items) {
-        await targetsApi.delete(id);
-      }
-      toast.success(`已删除 ${items.length} 条目标`);
-      setSelected(new Set());
-      load();
-    } catch {
-      toast.error("删除失败");
+  // 取消编辑
+  const handleCancel = () => {
+    setEditMode(false);
+    if (selectedMonth) {
+      loadMonthData(selectedMonth);
     }
   };
 
-  const handleDeleteMonth = async () => {
-    if (!selectedMonth) {
-      toast.error("请先选择月份");
-      return;
-    }
-
-    if (!confirm(`确定删除 ${selectedMonth} 的所有目标？`)) return;
-
-    try {
-      const result = await targetsApi.deleteMonth(selectedMonth);
-      toast.success(`已删除 ${result.deleted} 条目标`);
-      setSelected(new Set());
-      load();
-    } catch {
-      toast.error("删除失败");
-    }
-  };
-
-  const updateTarget = async (id: number, value: number) => {
-    try {
-      await targetsApi.update(id, value);
-      load();
-    } catch {
-      toast.error("更新失败");
-    }
+  // 更新目标值
+  const updateTarget = (store: string, value: number) => {
+    setRows(rows.map(r =>
+      r.store === store ? { ...r, target: value } : r
+    ));
   };
 
   const totalTarget = rows.reduce((sum, r) => sum + r.target, 0);
@@ -115,102 +125,114 @@ export default function Targets() {
       <Block>
         <div className="flex items-center justify-between">
           <div>
-            <BlockTitle>月度目标管理 <Badge variant="secondary" className="ml-1">{rows.length}</Badge></BlockTitle>
+            <BlockTitle>月度目标管理</BlockTitle>
             <BlockDescription>配置各门店月度销售目标，用于达成率计算</BlockDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-[140px] h-9">
-                <Calendar className="w-4 h-4 mr-1.5" />
-                <SelectValue placeholder="选择月份" />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map(m => (
-                  <SelectItem key={m} value={m}>{m}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {!editMode ? (
+              <>
+                <select
+                  value={selectedMonth}
+                  onChange={e => setSelectedMonth(e.target.value)}
+                  className="h-9 px-3 rounded-md border border-zinc-200 text-sm"
+                >
+                  <option value="">选择月份</option>
+                  {months.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <Button size="sm" onClick={handleCreate} disabled={!selectedMonth}>
+                  <Plus className="w-4 h-4 mr-1.5" />新建目标
+                </Button>
+              </>
+            ) : (
+              <>
+                <Badge variant="outline" className="text-[13px]">
+                  <Calendar className="w-3.5 h-3.5 mr-1" />
+                  {selectedMonth}
+                </Badge>
+                <Button size="sm" variant="outline" onClick={handleCancel}>
+                  <X className="w-3.5 h-3.5 mr-1" />取消
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </Block>
 
-      {selected.size > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
-          <CheckSquare className="w-4 h-4 text-blue-600" />
-          <span className="text-sm text-blue-700 font-medium">已选 {selected.size} 项</span>
-          <Button size="sm" variant="ghost" onClick={handleDeleteSelected} className="ml-auto">
-            <Trash2 className="w-3.5 h-3.5 mr-1 text-red-500" />删除
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
-            <X className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      )}
-
-      <Block>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={handleBatchCreate} disabled={!selectedMonth}>
-              <Plus className="w-4 h-4 mr-1.5" />批量创建
-            </Button>
-            <Button size="sm" variant="outline" onClick={handleDeleteMonth} disabled={!selectedMonth}>
-              <Trash2 className="w-3.5 h-3.5 mr-1" />清空月份
-            </Button>
+      {loading ? (
+        <div className="text-center py-12 text-zinc-400 text-sm">加载中...</div>
+      ) : selectedMonth && rows.length > 0 ? (
+        <Block>
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm text-zinc-500">
+              参与考核门店：{rows.length} 个
+              {editMode && " · 填写目标值后点击保存"}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-sm">
+                <span className="text-zinc-500">目标合计：</span>
+                <span className="font-semibold text-zinc-900 tnum">¥{totalTarget.toLocaleString()}</span>
+              </div>
+              {editMode && (
+                <Button size="sm" onClick={handleSave} disabled={saving}>
+                  <Save className="w-3.5 h-3.5 mr-1.5" />
+                  {saving ? "保存中..." : "保存"}
+                </Button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-zinc-500">目标合计：</span>
-            <span className="font-semibold text-zinc-900 tnum">¥{totalTarget.toLocaleString()}</span>
-          </div>
-        </div>
 
-        {rows.length > 0 ? (
           <div className="rounded-lg border border-zinc-200 overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-10">
-                    <button onClick={toggleAll} className="p-0.5">
-                      {allChecked ? <CheckSquare className="w-4 h-4 text-blue-600" /> : <Square className="w-4 h-4 text-zinc-400" />}
-                    </button>
-                  </TableHead>
-                  <TableHead>月份</TableHead>
+                  <TableHead className="w-16">#</TableHead>
                   <TableHead>门店</TableHead>
-                  <TableHead className="text-right">月度目标</TableHead>
+                  <TableHead className="text-right w-48">月度目标（元）</TableHead>
+                  <TableHead className="w-20">状态</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map(r => (
-                  <TableRow key={r.id}>
-                    <TableCell>
-                      <button onClick={() => toggle(r.id)} className="p-0.5">
-                        {selected.has(r.id)
-                          ? <CheckSquare className="w-4 h-4 text-blue-600" />
-                          : <Square className="w-4 h-4 text-zinc-300" />}
-                      </button>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[11px] font-normal">{r.month}</Badge>
-                    </TableCell>
+                {rows.map((r, i) => (
+                  <TableRow key={r.store}>
+                    <TableCell className="text-zinc-400">{i + 1}</TableCell>
                     <TableCell className="font-medium">{r.store}</TableCell>
                     <TableCell className="text-right">
-                      <Input
-                        type="number"
-                        value={r.target}
-                        onChange={e => updateTarget(r.id, Number(e.target.value))}
-                        className="w-28 h-8 text-right font-mono text-[13px]"
-                      />
+                      {editMode ? (
+                        <Input
+                          type="number"
+                          value={r.target}
+                          onChange={e => updateTarget(r.store, Number(e.target.value))}
+                          className="w-32 h-8 text-right font-mono text-[13px] ml-auto"
+                          placeholder="0"
+                        />
+                      ) : (
+                        <span className="tnum font-mono">{r.target.toLocaleString()}</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {r.exists ? (
+                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">已保存</Badge>
+                      ) : (
+                        <Badge className="bg-zinc-50 text-zinc-500 border-zinc-200 text-[10px]">待填写</Badge>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-zinc-200 p-8 text-center text-zinc-400 text-sm">
-            {selectedMonth ? `暂无 ${selectedMonth} 的目标数据` : "请选择月份查看目标"}
-          </div>
-        )}
-      </Block>
+        </Block>
+      ) : selectedMonth ? (
+        <div className="rounded-lg border border-dashed border-zinc-200 p-8 text-center text-zinc-400 text-sm">
+          该月份暂无目标数据，点击「新建目标」开始配置
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-zinc-200 p-8 text-center text-zinc-400 text-sm">
+          请选择月份查看或创建目标
+        </div>
+      )}
     </div>
   );
 }

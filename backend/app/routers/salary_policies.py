@@ -5,6 +5,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 import openpyxl
 from openpyxl.styles import Font, Border, Side, Alignment, PatternFill
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Table as RLTable, TableStyle, Paragraph, Spacer
+from PIL import Image as PILImage
 
 from backend.app.auth import current_user
 from backend.app.db import get_db, SalaryPolicyVersion, Month, User
@@ -243,6 +249,162 @@ def export_excel(
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={quote(filename)}"},
+    )
+
+
+def _build_policy_elements(policy):
+    """构建 PDF 元素列表（毛利率规则 + 提成比例表）"""
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("PolicyTitle", parent=styles["Title"], fontSize=16, spaceAfter=6)
+    heading_style = ParagraphStyle("PolicyHeading", parent=styles["Heading2"], fontSize=12, spaceAfter=6, spaceBefore=10)
+    meta_style = ParagraphStyle("PolicyMeta", parent=styles["Normal"], fontSize=9, textColor=colors.grey)
+
+    elements = []
+    elements.append(Paragraph(f"薪酬制度 v{policy.version}", title_style))
+    elements.append(Paragraph(f"生效日期: {policy.effective_from}　　备注: {policy.note or '无'}", meta_style))
+    elements.append(Spacer(1, 8))
+
+    # 毛利率规则表
+    margin_rules = policy.content.get("margin_rules", {})
+    elements.append(Paragraph("一、毛利率分类规则", heading_style))
+
+    margin_data = [["商品分类", "正价(高毛利)", "低价(低毛利)", "特价"]]
+    for cat, rules in margin_rules.items():
+        high_min = rules.get("high", {}).get("min", "")
+        low_min = rules.get("low", {}).get("min", "")
+        low_max = rules.get("low", {}).get("max", "")
+        special_max = rules.get("special", {}).get("max", "")
+        margin_data.append([
+            cat,
+            f">{high_min}%" if high_min else "-",
+            f"{low_min}-{low_max}%" if low_min and low_max else "-",
+            f"≤{special_max}%" if special_max else "-",
+        ])
+
+    margin_table = RLTable(margin_data, colWidths=[60, 100, 100, 80])
+    margin_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWHEIGHT", (0, 0), (-1, -1), 22),
+    ]))
+    elements.append(margin_table)
+    elements.append(Spacer(1, 12))
+
+    # 提成比例表
+    commission_rates = policy.content.get("commission_rates", {})
+    elements.append(Paragraph("二、提成比例表(%)", heading_style))
+
+    buckets = ["GE_100", "90_100", "80_90", "70_80", "LT_70"]
+    bucket_labels = [">=100%", "90-100%", "80-90%", "70-80%", "<70%"]
+    tiers = ["低温低毛", "低温高毛", "常温低毛", "常温高毛", "特价"]
+    classes = ["A", "B", "C", "D"]
+
+    rate_data = [["达成档位", "商品档位"] + [f"{c}类" for c in classes]]
+    for bi, bucket in enumerate(buckets):
+        for ti, tier in enumerate(tiers):
+            row = []
+            if ti == 0:
+                row.append(bucket_labels[bi])
+            else:
+                row.append("")
+            row.append(tier)
+            for cls in classes:
+                val = commission_rates.get(cls, {}).get(bucket, {}).get(tier, "-")
+                row.append(str(val))
+            rate_data.append(row)
+
+    rate_table = RLTable(rate_data, colWidths=[65, 65, 45, 45, 45, 45])
+    rate_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ALIGN", (2, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWHEIGHT", (0, 0), (-1, -1), 18),
+        ("SPAN", (0, 1), (0, 5)),
+        ("SPAN", (0, 6), (0, 10)),
+        ("SPAN", (0, 11), (0, 15)),
+        ("SPAN", (0, 16), (0, 20)),
+        ("SPAN", (0, 21), (0, 25)),
+    ]))
+    elements.append(rate_table)
+
+    return elements
+
+
+@router.get("/{policy_id}/export/pdf")
+def export_pdf(
+    policy_id: int, _: User = Depends(current_user), db: Session = Depends(get_db)
+):
+    """导出薪酬制度为 PDF 文件"""
+    policy = db.get(SalaryPolicyVersion, policy_id)
+    if policy is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "薪酬制度版本不存在")
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm, topMargin=20 * mm, bottomMargin=15 * mm)
+    elements = _build_policy_elements(policy)
+    doc.build(elements)
+    buf.seek(0)
+
+    from urllib.parse import quote
+    filename = f"salary_policy_v{policy.version}_{policy.effective_from}.pdf"
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={quote(filename)}"},
+    )
+
+
+@router.get("/{policy_id}/export/image")
+def export_image(
+    policy_id: int, _: User = Depends(current_user), db: Session = Depends(get_db)
+):
+    """导出薪酬制度为 PNG 图片"""
+    policy = db.get(SalaryPolicyVersion, policy_id)
+    if policy is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "薪酬制度版本不存在")
+
+    # 先生成 PDF，再转成图片
+    pdf_buf = BytesIO()
+    doc = SimpleDocTemplate(pdf_buf, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm, topMargin=20 * mm, bottomMargin=15 * mm)
+    elements = _build_policy_elements(policy)
+    doc.build(elements)
+    pdf_buf.seek(0)
+
+    # PDF 转 PNG（使用 fitz/PyMuPDF 或回退到 reportlab 渲染）
+    try:
+        import fitz  # PyMuPDF
+        pdf_doc = fitz.open(stream=pdf_buf.read(), filetype="pdf")
+        page = pdf_doc[0]
+        mat = fitz.Matrix(2, 2)  # 2x 放大以提高清晰度
+        pix = page.get_pixmap(matrix=mat)
+        img_bytes = pix.tobytes("png")
+        pdf_doc.close()
+    except ImportError:
+        # 无 PyMuPDF，使用 Pillow 从 PDF 渲染
+        # 尝试用 pdf2image
+        try:
+            from pdf2image import convert_from_bytes
+            images = convert_from_bytes(pdf_buf.read(), dpi=200)
+            img_buf = BytesIO()
+            images[0].save(img_buf, format="PNG")
+            img_bytes = img_buf.getvalue()
+        except ImportError:
+            raise HTTPException(
+                status.HTTP_501_NOT_IMPLEMENTED,
+                "图片导出需要安装 PyMuPDF (pip install PyMuPDF) 或 pdf2image",
+            )
+
+    from urllib.parse import quote
+    filename = f"salary_policy_v{policy.version}_{policy.effective_from}.png"
+    return StreamingResponse(
+        BytesIO(img_bytes),
+        media_type="image/png",
         headers={"Content-Disposition": f"attachment; filename={quote(filename)}"},
     )
 

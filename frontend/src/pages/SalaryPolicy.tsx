@@ -153,12 +153,49 @@ export default function SalaryPolicy() {
     }
   };
 
-  const handleExportPDF = () => {
-    toast.info("PDF导出功能开发中，请使用Excel导出");
+  const handleExportPDF = async () => {
+    if (!currentVersion) return;
+    try {
+      const token = localStorage.getItem("salary_token");
+      const response = await fetch(`/api/salary-policies/${currentVersion.id}/export/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("导出失败");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `salary_policy_v${currentVersion.version}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      toast.success("导出成功");
+    } catch {
+      toast.error("导出失败");
+    }
   };
 
-  const handleCopyImage = () => {
-    toast.info("图片复制功能开发中，请使用Excel导出");
+  const handleCopyImage = async () => {
+    if (!currentVersion) return;
+    try {
+      const token = localStorage.getItem("salary_token");
+      const response = await fetch(`/api/salary-policies/${currentVersion.id}/export/image`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || "导出失败");
+      }
+      const blob = await response.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": blob }),
+      ]);
+      toast.success("图片已复制到剪贴板");
+    } catch (e: any) {
+      toast.error(e.message || "复制失败");
+    }
+  };
   };
 
   const updateRate = (cls: string, bucket: string, tier: string, value: string) => {

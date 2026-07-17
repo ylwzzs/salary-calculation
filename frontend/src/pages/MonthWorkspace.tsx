@@ -23,7 +23,7 @@ export default function MonthWorkspace() {
         const data = await monthsApi.list();
         const m = data.find((x) => x.month === month);
         if (m) {
-          setStepData((m as any).step_data || {});
+          setStepData(m.step_data || {});
         }
       } finally {
         setLoading(false);

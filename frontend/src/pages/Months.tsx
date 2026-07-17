@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,7 +38,7 @@ export default function Months() {
     if (m.status === "computed") {
       nav(`/months/${m.month}?step=results`);
     } else {
-      const step = (m as any).current_step || "import";
+      const step = m.current_step || "import";
       nav(`/months/${m.month}?step=${step}`);
     }
   };
@@ -59,7 +60,7 @@ export default function Months() {
     if (m.status === "computed") {
       return { label: "已计算", color: "default", summary: "所有步骤已完成" };
     }
-    const step = (m as any).current_step || "import";
+    const step = m.current_step || "import";
     return { label: STEP_LABELS[step] || "进行中", color: "secondary" };
   };
 
@@ -123,6 +124,3 @@ export default function Months() {
   );
 }
 
-function cn(...classes: (string | false | undefined | null)[]) {
-  return classes.filter(Boolean).join(" ");
-}

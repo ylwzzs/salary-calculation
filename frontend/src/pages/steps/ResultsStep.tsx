@@ -77,7 +77,7 @@ export default function ResultsStep({ month, onComputed }: { month: string; onCo
   return (
     <>
       <div className="flex items-center gap-2 mb-5">
-        <Button onClick={compute} disabled={busy} className=""><Zap className="w-4 h-4 mr-1.5" />计算提成</Button>
+        <Button onClick={compute} disabled={busy} className=""><Zap className="w-4 h-4 mr-1.5" />{busy ? "计算中..." : "计算提成"}</Button>
         <Button variant="outline" onClick={() => workflowApi.downloadExport(month)}><Download className="w-4 h-4 mr-1.5" />导出 Excel</Button>
       </div>
 

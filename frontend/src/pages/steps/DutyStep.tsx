@@ -8,6 +8,7 @@ import { toast } from "sonner";
 export default function DutyStep({ month }: { month: string }) {
   const [grid, setGrid] = useState<DutyGrid>({});
   const [loading, setLoading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [edit, setEdit] = useState<Record<string, string>>({});
 
   const dates = useMemo(() => {
@@ -46,16 +47,20 @@ export default function DutyStep({ month }: { month: string }) {
         if (p) items.push({ store, date, salesperson: p });
       }
     }
-    await workflowApi.setDuty(month, items);
-    toast.success(`已确认 ${items.length} 条当班`);
+    setConfirming(true);
+    try {
+      await workflowApi.setDuty(month, items);
+      toast.success(`已确认 ${items.length} 条当班`);
+    } catch { toast.error("确认失败"); }
+    finally { setConfirming(false); }
   };
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" onClick={infer} disabled={loading}>重新推断</Button>
+        <Button variant="outline" size="sm" onClick={infer} disabled={loading}>{loading ? "推断中..." : "重新推断"}</Button>
         {multiCount > 0 ? <Badge className="bg-red-100 text-red-700 border-red-200">{multiCount} 个多人当天</Badge> : <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">无冲突</Badge>}
-        <Button size="sm" onClick={confirm} className=" ml-auto">确认当班</Button>
+        <Button size="sm" onClick={confirm} disabled={confirming} className="ml-auto">{confirming ? "确认中..." : "确认当班"}</Button>
       </div>
       <div className="rounded-lg border border-zinc-200 bg-white overflow-x-auto">
         <table className="w-full text-sm">

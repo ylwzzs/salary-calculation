@@ -98,6 +98,8 @@ export interface Target {
 export const targetsApi = {
   list: (month?: string) => http.get<Target[]>("/targets", { params: month ? { month } : {} }).then((r) => r.data),
   get: (month: string) => http.get<Record<string, Record<string, number>>>(`/months/${month}/targets`).then((r) => r.data),
+  set: (month: string, items: { store: string; target: string }[]) =>
+    http.put(`/months/${month}/targets`, { items }).then((r) => r.data),
   create: (data: { month: string; store: string; target: number }) =>
     http.post<Target>("/targets", data).then((r) => r.data),
   batchCreate: (month: string) =>

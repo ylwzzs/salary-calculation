@@ -26,12 +26,23 @@ export default function TargetsStep({ month }: { month: string }) {
     try {
       const data = await targetsApi.get(month);
       const items = Object.values(data)[0] || {};
-      setRows(
-        Object.entries(items).map(([store, target]) => ({
-          store,
-          target: Number(target),
-        }))
-      );
+      const targetRows = Object.entries(items).map(([store, target]) => ({
+        store,
+        target: Number(target),
+      }));
+
+      if (targetRows.length > 0) {
+        setRows(targetRows);
+      } else {
+        // 无目标数据时，加载所有门店
+        try {
+          const stores = await storesApi.list();
+          setRows(stores.map(s => ({ store: s.name, target: 0 })));
+        } catch {
+          // 门店也加载失败则用空数组
+          setRows([]);
+        }
+      }
     } catch {
       toast.error("加载目标失败");
     } finally {
@@ -45,7 +56,7 @@ export default function TargetsStep({ month }: { month: string }) {
   const save = async () => {
     setSaving(true);
     try {
-      await targetsApi.batchSet(
+      await targetsApi.set(
         month,
         rows.map((r) => ({ store: r.store, target: String(r.target) }))
       );

@@ -8,6 +8,8 @@
   --color-success: #16A34A;
   --color-warning: #D97706;
   --color-error: #DC2626;
+  --color-accent: #059669;
+  --color-financial: #059669;
 }
 
 /* 数字等宽对齐 */

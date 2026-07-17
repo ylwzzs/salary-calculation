@@ -21,10 +21,13 @@ const BUCKET_LABELS: Record<string, string> = Object.fromEntries(BUCKETS.map((b)
 const BUCKET_COLORS: Record<string, string> = Object.fromEntries(BUCKETS.map((b) => [b.key, b.color]));
 const MEDAL = ["bg-amber-500", "bg-zinc-400", "bg-amber-700"];
 
-function KpiCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+const ACCENT = { green: "bg-emerald-50 text-emerald-600", blue: "bg-blue-50 text-blue-600", purple: "bg-purple-50 text-purple-600" } as const;
+type AccentColor = keyof typeof ACCENT;
+
+function KpiCard({ icon, label, value, color = "blue" }: { icon: React.ReactNode; label: string; value: string; color?: AccentColor }) {
   return (
     <div className="rounded-lg border border-zinc-200 bg-white p-4 flex items-center gap-3 hover:border-zinc-300 transition-colors">
-      <div className="w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-600 shrink-0">{icon}</div>
+      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${ACCENT[color]}`}>{icon}</div>
       <div><p className="text-[12px] text-zinc-400">{label}</p><p className="text-xl font-semibold text-zinc-900 tnum">{value}</p></div>
     </div>
   );
@@ -84,9 +87,9 @@ export default function ResultsStep({ month, onComputed }: { month: string; onCo
         <div className="space-y-4">
           <Block className="border border-zinc-200 bg-white !p-0">
             <div className="grid grid-cols-3 divide-x divide-zinc-100">
-              <div className="p-4"><KpiCard icon={<DollarSign className="w-5 h-5" />} label="提成总额" value={`¥${total.toFixed(2)}`} /></div>
-              <div className="p-4"><KpiCard icon={<Users className="w-5 h-5" />} label="参与营业员" value={String(data!.salary.length)} /></div>
-              <div className="p-4"><KpiCard icon={<DollarSign className="w-5 h-5" />} label="人均提成" value={`¥${(total / data!.salary.length).toFixed(2)}`} /></div>
+              <div className="p-4"><KpiCard icon={<DollarSign className="w-5 h-5" />} label="提成总额" value={`¥${total.toFixed(2)}`} color="green" /></div>
+              <div className="p-4"><KpiCard icon={<Users className="w-5 h-5" />} label="参与营业员" value={String(data!.salary.length)} color="blue" /></div>
+              <div className="p-4"><KpiCard icon={<DollarSign className="w-5 h-5" />} label="人均提成" value={`¥${(total / data!.salary.length).toFixed(2)}`} color="green" /></div>
             </div>
           </Block>
 
@@ -102,7 +105,7 @@ export default function ResultsStep({ month, onComputed }: { month: string; onCo
                   <div key={p.person} className="flex items-center gap-3 py-2">
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 ${i < 3 ? MEDAL[i] : "bg-zinc-200 text-zinc-500"}`}>{i + 1}</div>
                     <span className="flex-1 text-sm font-medium text-zinc-800">{p.person}</span>
-                    <span className="tnum text-sm font-semibold text-zinc-900">¥{p.commission.toFixed(2)}</span>
+                    <span className="tnum text-sm font-semibold text-emerald-700">¥{p.commission.toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -128,7 +131,7 @@ export default function ResultsStep({ month, onComputed }: { month: string; onCo
                         : <span className="text-zinc-400 text-[13px]">{i + 1}</span>}
                     </TableCell>
                     <TableCell className="font-medium">{r.person}</TableCell>
-                    <TableCell className="text-right tnum font-semibold text-zinc-900">¥{r.commission.toFixed(2)}</TableCell>
+                    <TableCell className="text-right tnum font-semibold text-emerald-700">¥{r.commission.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -160,7 +163,7 @@ export default function ResultsStep({ month, onComputed }: { month: string; onCo
                       <TableCell className="tnum">{r.target?.toFixed(0)}</TableCell>
                       <TableCell className="tnum">{(r.achievement * 100).toFixed(0)}%</TableCell>
                       <TableCell><Badge variant="outline" className={`text-[11px] ${BUCKET_COLORS[r.bucket] || ""} text-white border-0`}>{BUCKET_LABELS[r.bucket] || r.bucket}</Badge></TableCell>
-                      <TableCell className="text-right tnum font-semibold">¥{r.commission.toFixed(2)}</TableCell>
+                      <TableCell className="text-right tnum font-semibold text-emerald-700">¥{r.commission.toFixed(2)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

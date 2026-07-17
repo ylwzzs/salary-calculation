@@ -117,9 +117,8 @@ export default function Products() {
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell className="text-zinc-500">{r.spec}</TableCell>
                     <TableCell>
-                      {r.exclude_commission
-                        ? <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">不计提成</Badge>
-                        : <Badge variant="outline" className="text-[11px] font-normal">{r.category}</Badge>}
+                      {r.category && <Badge variant="outline" className="text-[11px] font-normal mr-1">{r.category}</Badge>}
+                      {r.exclude_commission && <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">不计提成</Badge>}
                     </TableCell>
                     <TableCell className="text-right tnum">{r.cost != null ? `¥${r.cost}` : "—"}</TableCell>
                     <TableCell className="text-right">

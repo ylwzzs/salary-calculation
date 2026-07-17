@@ -51,7 +51,7 @@ export default function Products() {
 
   const save = async () => {
     if (!form.barcode) { toast.error("条码不能为空"); return; }
-    await productsApi.upsert(form as Product);
+    await productsApi.upsert({ ...form, exclude_commission: form.exclude_commission ?? false } as Product);
     toast.success("已保存"); setOpen(false); setEdit(null); load();
   };
   const openEdit = (p?: Product) => { setEdit(p ?? null); setForm(p ?? { category: "低温奶" }); setOpen(true); };

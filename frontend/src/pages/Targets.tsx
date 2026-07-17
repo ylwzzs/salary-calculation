@@ -91,8 +91,10 @@ export default function Targets() {
       setNewMonth("");
       loadMonths();
       setSelectedMonth(newMonth);
-    } catch {
-      toast.error("创建失败");
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } } };
+      const message = error.response?.data?.detail || "创建失败";
+      toast.error(message);
     }
   };
 

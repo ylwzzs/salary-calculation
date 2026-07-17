@@ -94,6 +94,8 @@ class Month(Base):
     rate_version_id = Column(Integer, nullable=True)  # 计算时锁定的比例表版本
     policy_version_id = Column(Integer, ForeignKey("salary_policy_versions.id"), nullable=True)
     policy_version = relationship("SalaryPolicyVersion")
+    current_step = Column(String(20), default="import")  # import/targets/duty/results
+    step_data = Column(JSON, default=dict)  # 步骤数据快照
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -119,3 +121,18 @@ class Result(Base):
     bucket = Column(String, nullable=False)
     commission = Column(Numeric, nullable=False)
     __table_args__ = (UniqueConstraint("month", "person", "store", name="uq_result"),)
+
+
+class Anomaly(Base):
+    """计算预检异常记录"""
+    __tablename__ = "anomalies"
+    id = Column(Integer, primary_key=True)
+    month = Column(String, nullable=False, index=True)  # YYYY-MM
+    anomaly_type = Column(String(10), nullable=False)  # 1-6
+    entity_type = Column(String(50))  # store/product/gift/refund
+    entity_id = Column(String(100))  # 门店名/条码等
+    description = Column(String(500))
+    status = Column(String(20), default="pending")  # pending/ignored/resolved
+    resolution = Column(String(200))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)

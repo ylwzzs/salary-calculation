@@ -1,4 +1,14 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@theme {
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --color-primary: #1E40AF;
+  --color-primary-light: #3B82F6;
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+  --color-error: #DC2626;
+}
 
 /* 数字等宽对齐 */
 .tnum {

@@ -135,3 +135,23 @@ class SalaryPolicySummary(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AnomalyOut(BaseModel):
+    id: int
+    month: str
+    anomaly_type: str
+    entity_type: str | None = None
+    entity_id: str | None = None
+    description: str
+    status: str
+    resolution: str | None = None
+    created_at: str | None = None
+    resolved_at: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class AnomalyResolve(BaseModel):
+    resolution: str | None = None

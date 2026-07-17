@@ -35,12 +35,21 @@ export default function SalaryPolicy() {
     try {
       const data = await salaryPolicyApi.list();
       setVersions(data);
-      if (data.length > 0 && !selectedId) {
+      if (data.length === 0) {
+        setSelectedId(null);
+        setCurrentVersion(null);
+        return;
+      }
+      // 检查当前选中的版本是否还在列表中
+      const selectedExists = selectedId && data.some((v) => v.id === selectedId);
+      if (!selectedId || !selectedExists) {
+        // 没有选中或选中的已被删除，自动选择当前生效版本或第一个
         const current = data.find((v) => v.is_current) || data[0];
         setSelectedId(current.id);
         const detail = await salaryPolicyApi.get(current.id);
         setCurrentVersion(detail);
-      } else if (selectedId && !editMode) {
+      } else if (!editMode) {
+        // 重新加载当前选中的版本
         const detail = await salaryPolicyApi.get(selectedId);
         setCurrentVersion(detail);
       }
@@ -120,11 +129,7 @@ export default function SalaryPolicy() {
     try {
       await salaryPolicyApi.delete(id);
       toast.success("已删除");
-      if (selectedId === id) {
-        setSelectedId(null);
-        setCurrentVersion(null);
-      }
-      loadVersions();
+      loadVersions(); // loadVersions 会自动切换到有效版本
     } catch (e: any) {
       toast.error(e.response?.data?.detail || "删除失败");
     }

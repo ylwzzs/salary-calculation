@@ -22,10 +22,21 @@ def upsert_store(name: str, body: StoreUpsert,
     if s is None:
         s = Store(name=name)
         db.add(s)
-    for f in ("group", "store_class", "supervisor"):
+    for f in ("group", "store_class", "supervisor", "exclude_assessment"):
         setattr(s, f, getattr(body, f))
     db.commit()
     return s
+
+
+@router.delete("/{name}")
+def delete_store(name: str,
+                 _: User = Depends(current_user), db: Session = Depends(get_db)):
+    s = db.get(Store, name)
+    if s is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "门店不存在")
+    db.delete(s)
+    db.commit()
+    return {"deleted": name}
 
 
 @router.post("/batch-class")

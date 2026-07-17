@@ -59,11 +59,13 @@ export interface Store {
   group?: string;
   store_class?: string;
   supervisor?: string;
+  exclude_assessment?: boolean;
 }
 
 export const storesApi = {
   list: () => http.get<Store[]>("/stores").then((r) => r.data),
   upsert: (s: Store) => http.put<Store>(`/stores/${s.name}`, s).then((r) => r.data),
+  remove: (name: string) => http.delete(`/stores/${name}`).then((r) => r.data),
   batchClass: (group: string, store_class: string) =>
     http.post<{ updated: number }>("/stores/batch-class", { group, store_class }).then((r) => r.data),
 };

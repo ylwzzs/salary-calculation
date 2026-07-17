@@ -29,6 +29,7 @@ class StoreOut(BaseModel):
     group: str | None = None
     store_class: str | None = None
     supervisor: str | None = None
+    exclude_assessment: bool = False  # 不参与考核
 
     class Config:
         from_attributes = True
@@ -39,6 +40,7 @@ class StoreUpsert(BaseModel):
     group: str | None = None
     store_class: str | None = None
     supervisor: str | None = None
+    exclude_assessment: bool = False
 
 
 class BatchClassIn(BaseModel):

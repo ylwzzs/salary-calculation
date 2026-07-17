@@ -34,6 +34,7 @@ class Store(Base):
     group = Column(String)               # 1组 | 2组 | 3组
     store_class = Column(String)         # A | B | C | D
     supervisor = Column(String, default="")
+    exclude_assessment = Column(Boolean, default=False)  # 不参与考核
 
 
 class MonthlyTarget(Base):

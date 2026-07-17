@@ -99,7 +99,7 @@ export default function Products() {
                   </button>
                 </TableHead>
                 <TableHead>条码</TableHead><TableHead>名称</TableHead><TableHead>规格</TableHead>
-                <TableHead>分类</TableHead><TableHead className="text-right">成本</TableHead>
+                <TableHead>分类</TableHead><TableHead>标记</TableHead><TableHead className="text-right">成本</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow></TableHeader>
               <TableBody>
@@ -116,8 +116,8 @@ export default function Products() {
                     <TableCell className="font-mono text-xs text-zinc-500">{r.barcode}</TableCell>
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell className="text-zinc-500">{r.spec}</TableCell>
+                    <TableCell><Badge variant="outline" className="text-[11px] font-normal">{r.category}</Badge></TableCell>
                     <TableCell>
-                      {r.category && <Badge variant="outline" className="text-[11px] font-normal mr-1">{r.category}</Badge>}
                       {r.exclude_commission && <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">不计提成</Badge>}
                     </TableCell>
                     <TableCell className="text-right tnum">{r.cost != null ? `¥${r.cost}` : "—"}</TableCell>

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { targetsApi, storesApi, type Target, type Store } from "../api";
+import { targetsApi, storesApi, monthsApi, type Target, type Store, type MonthInfo } from "../api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Calendar, Save, X, Edit3 } from "lucide-react";
+import { Plus, Calendar, Save, X, FileText } from "lucide-react";
 import { Block, BlockTitle, BlockDescription } from "@/components/Block";
 import { toast } from "sonner";
 
@@ -16,19 +17,20 @@ interface TargetRow {
 }
 
 export default function Targets() {
-  const [months, setMonths] = useState<string[]>([]);
+  const [months, setMonths] = useState<MonthInfo[]>([]);
   const [selectedMonth, setSelectedMonth] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [rows, setRows] = useState<TargetRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newMonth, setNewMonth] = useState("");
 
   // 加载所有月份
   const loadMonths = async () => {
     try {
-      const data = await targetsApi.list();
-      const uniqueMonths = Array.from(new Set(data.map(t => t.month))).sort().reverse();
-      setMonths(uniqueMonths);
+      const data = await monthsApi.list();
+      setMonths(data);
     } catch {
       // ignore
     }
@@ -75,7 +77,26 @@ export default function Targets() {
     }
   }, [selectedMonth]);
 
-  // 新建目标
+  // 新建月份
+  const handleCreateMonth = async () => {
+    if (!newMonth.match(/^\d{4}-\d{2}$/)) {
+      toast.error("格式应为 YYYY-MM");
+      return;
+    }
+
+    try {
+      await monthsApi.create(newMonth);
+      toast.success(`已创建 ${newMonth}`);
+      setCreateOpen(false);
+      setNewMonth("");
+      loadMonths();
+      setSelectedMonth(newMonth);
+    } catch {
+      toast.error("创建失败");
+    }
+  };
+
+  // 新建目标（进入编辑模式）
   const handleCreate = () => {
     setEditMode(true);
     loadMonthData(selectedMonth);
@@ -96,6 +117,7 @@ export default function Targets() {
       toast.success(`已保存 ${rows.length} 个门店目标`);
       setEditMode(false);
       loadMonths();
+      loadMonthData(selectedMonth);
     } catch {
       toast.error("保存失败");
     } finally {
@@ -125,7 +147,7 @@ export default function Targets() {
       <Block>
         <div className="flex items-center justify-between">
           <div>
-            <BlockTitle>月度目标管理</BlockTitle>
+            <BlockTitle>月度目标管理 <Badge variant="secondary" className="ml-1">{months.length}</Badge></BlockTitle>
             <BlockDescription>配置各门店月度销售目标，用于达成率计算</BlockDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -138,11 +160,14 @@ export default function Targets() {
                 >
                   <option value="">选择月份</option>
                   {months.map(m => (
-                    <option key={m} value={m}>{m}</option>
+                    <option key={m.month} value={m.month}>{m.month}</option>
                   ))}
                 </select>
+                <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+                  <FileText className="w-4 h-4 mr-1.5" />新建月份
+                </Button>
                 <Button size="sm" onClick={handleCreate} disabled={!selectedMonth}>
-                  <Plus className="w-4 h-4 mr-1.5" />新建目标
+                  <Plus className="w-4 h-4 mr-1.5" />配置目标
                 </Button>
               </>
             ) : (
@@ -226,13 +251,33 @@ export default function Targets() {
         </Block>
       ) : selectedMonth ? (
         <div className="rounded-lg border border-dashed border-zinc-200 p-8 text-center text-zinc-400 text-sm">
-          该月份暂无目标数据，点击「新建目标」开始配置
+          该月份暂无目标数据，点击「配置目标」开始配置
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-zinc-200 p-8 text-center text-zinc-400 text-sm">
-          请选择月份查看或创建目标
+          请选择月份或新建月份开始配置目标
         </div>
       )}
+
+      {/* 新建月份弹窗 */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>新建月份</DialogTitle></DialogHeader>
+          <div className="py-3">
+            <label className="text-sm text-zinc-500 mb-2 block">月份（YYYY-MM）</label>
+            <Input
+              value={newMonth}
+              onChange={e => setNewMonth(e.target.value)}
+              placeholder="例如：2026-08"
+              className="h-9"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+            <Button onClick={handleCreateMonth}>创建</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

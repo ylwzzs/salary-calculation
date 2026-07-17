@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Edit3 } from "lucide-react";
+import { Plus, Search, Edit3, Tag, X, CheckSquare, Square } from "lucide-react";
 import { Block, BlockTitle, BlockDescription } from "@/components/Block";
 import { toast } from "sonner";
 
@@ -16,6 +16,7 @@ export default function Products() {
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Product | null>(null);
   const [form, setForm] = useState<Partial<Product>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const load = async () => { try { setRows(await productsApi.list()); } catch { /* ignore */ } };
   useEffect(() => { load(); }, []);
@@ -25,6 +26,28 @@ export default function Products() {
     const q = search.toLowerCase();
     return rows.filter((r) => r.barcode?.toLowerCase().includes(q) || r.name?.toLowerCase().includes(q) || r.category?.toLowerCase().includes(q));
   }, [rows, search]);
+
+  const allChecked = filtered.length > 0 && filtered.every((r) => selected.has(r.barcode));
+  const toggleAll = () => {
+    if (allChecked) setSelected(new Set());
+    else setSelected(new Set(filtered.map((r) => r.barcode)));
+  };
+  const toggle = (barcode: string) => {
+    setSelected((s) => { const n = new Set(s); n.has(barcode) ? n.delete(barcode) : n.add(barcode); return n; });
+  };
+
+  const batchSet = async (exclude: boolean) => {
+    const items = Array.from(selected);
+    toast.info(`正在标记 ${items.length} 个商品...`);
+    try {
+      for (const bc of items) {
+        const p = rows.find((r) => r.barcode === bc);
+        if (p) await productsApi.upsert({ ...p, exclude_commission: exclude });
+      }
+      toast.success(`已${exclude ? "标记" : "取消"} ${items.length} 个商品`);
+      setSelected(new Set()); load();
+    } catch { toast.error("批量操作失败"); }
+  };
 
   const save = async () => {
     if (!form.barcode) { toast.error("条码不能为空"); return; }
@@ -45,6 +68,22 @@ export default function Products() {
         </div>
       </Block>
 
+      {selected.size > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
+          <CheckSquare className="w-4 h-4 text-blue-600" />
+          <span className="text-sm text-blue-700 font-medium">已选 {selected.size} 项</span>
+          <Button size="sm" variant="outline" className="ml-auto" onClick={() => batchSet(true)}>
+            <Tag className="w-3.5 h-3.5 mr-1" />标记不计提成
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => batchSet(false)}>
+            取消标记
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+            <X className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      )}
+
       {rows.length > 0 ? (
         <Block>
           <div className="relative mb-3">
@@ -54,6 +93,11 @@ export default function Products() {
           <div className="rounded-lg border border-zinc-200 overflow-hidden">
             <Table>
               <TableHeader><TableRow>
+                <TableHead className="w-10">
+                  <button onClick={toggleAll} className="p-0.5">
+                    {allChecked ? <CheckSquare className="w-4 h-4 text-blue-600" /> : <Square className="w-4 h-4 text-zinc-400" />}
+                  </button>
+                </TableHead>
                 <TableHead>条码</TableHead><TableHead>名称</TableHead><TableHead>规格</TableHead>
                 <TableHead>分类</TableHead><TableHead className="text-right">成本</TableHead>
                 <TableHead className="w-12"></TableHead>
@@ -61,14 +105,21 @@ export default function Products() {
               <TableBody>
                 {filtered.map((r) => (
                   <TableRow key={r.barcode} className="cursor-pointer" onClick={() => openEdit(r)}>
+                    <TableCell>
+                      <button onClick={(e) => { e.stopPropagation(); toggle(r.barcode); }}
+                        className="p-0.5">
+                        {selected.has(r.barcode)
+                          ? <CheckSquare className="w-4 h-4 text-blue-600" />
+                          : <Square className="w-4 h-4 text-zinc-300" />}
+                      </button>
+                    </TableCell>
                     <TableCell className="font-mono text-xs text-zinc-500">{r.barcode}</TableCell>
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell className="text-zinc-500">{r.spec}</TableCell>
                     <TableCell>
                       {r.exclude_commission
                         ? <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">不计提成</Badge>
-                        : <Badge variant="outline" className="text-[11px] font-normal">{r.category}</Badge>
-                      }
+                        : <Badge variant="outline" className="text-[11px] font-normal">{r.category}</Badge>}
                     </TableCell>
                     <TableCell className="text-right tnum">{r.cost != null ? `¥${r.cost}` : "—"}</TableCell>
                     <TableCell className="text-right">

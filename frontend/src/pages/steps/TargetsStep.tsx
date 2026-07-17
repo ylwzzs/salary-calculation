@@ -45,7 +45,7 @@ export default function TargetsStep({ month }: { month: string }) {
   const save = async () => {
     setSaving(true);
     try {
-      await targetsApi.set(
+      await targetsApi.batchSet(
         month,
         rows.map((r) => ({ store: r.store, target: String(r.target) }))
       );

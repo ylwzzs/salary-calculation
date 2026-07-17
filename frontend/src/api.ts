@@ -134,3 +134,43 @@ export const workflowApi = {
     URL.revokeObjectURL(url);
   },
 };
+
+// —— 薪酬制度版本管理 ——
+export interface SalaryPolicyContent {
+  margin_rules: Record<string, any>;
+  commission_rates: Record<string, any>;
+}
+
+export interface SalaryPolicyVersion {
+  id: number;
+  version: number;
+  effective_from: string;
+  is_current: boolean;
+  created_at: string;
+  created_by?: string;
+  content: SalaryPolicyContent;
+  note?: string;
+}
+
+export interface SalaryPolicySummary {
+  id: number;
+  version: number;
+  effective_from: string;
+  is_current: boolean;
+  created_by?: string;
+  note?: string;
+  used_by_months: string[];
+}
+
+export const salaryPolicyApi = {
+  list: () => http.get<SalaryPolicySummary[]>("/salary-policies").then(r => r.data),
+  getCurrent: () => http.get<SalaryPolicyVersion>("/salary-policies/current").then(r => r.data),
+  get: (id: number) => http.get<SalaryPolicyVersion>(`/salary-policies/${id}`).then(r => r.data),
+  create: (data: {
+    effective_from: string;
+    note?: string;
+    content: SalaryPolicyContent;
+  }) => http.post<SalaryPolicyVersion>("/salary-policies", data).then(r => r.data),
+  activate: (id: number) => http.post<SalaryPolicyVersion>(`/salary-policies/${id}/activate`).then(r => r.data),
+  delete: (id: number) => http.delete(`/salary-policies/${id}`).then(r => r.data),
+};

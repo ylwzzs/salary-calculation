@@ -102,7 +102,7 @@ class SalaryPolicyOut(BaseModel):
     version: int
     effective_from: date
     is_current: bool
-    created_at: str
+    created_at: str | None = None
     created_by: str | None = None
     content: SalaryPolicyContent
     note: str | None = None

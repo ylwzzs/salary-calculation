@@ -92,7 +92,7 @@ class Month(Base):
     sales_file = Column(String, nullable=True)   # 上传的销售流水路径
     gifts_file = Column(String, nullable=True)   # 上传的让利明细路径
     rate_version_id = Column(Integer, nullable=True)  # 计算时锁定的比例表版本
-    policy_version_id = Column(Integer, ForeignKey("salary_policy_versions.id"))
+    policy_version_id = Column(Integer, ForeignKey("salary_policy_versions.id"), nullable=True)
     policy_version = relationship("SalaryPolicyVersion")
     created_at = Column(DateTime, default=datetime.utcnow)
 

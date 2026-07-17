@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.app.auth import current_user
@@ -59,7 +60,7 @@ def create_policy(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    next_version = (db.query(SalaryPolicyVersion).count() or 0) + 1
+    next_version = (db.query(func.max(SalaryPolicyVersion.version)).scalar() or 0) + 1
 
     for v in db.query(SalaryPolicyVersion).filter_by(is_current=True).all():
         v.is_current = False

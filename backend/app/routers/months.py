@@ -40,8 +40,7 @@ def get_month(month: str, _: User = Depends(current_user), db: Session = Depends
 @router.put("/{month}/step")
 def update_step(
     month: str,
-    step: str,
-    step_data: dict | None = None,
+    body: dict,
     _: User = Depends(current_user),
     db: Session = Depends(get_db)
 ):
@@ -49,15 +48,19 @@ def update_step(
     m = db.get(Month, month)
     if not m:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "月份不存在")
-    
-    m.current_step = step
+
+    step = body.get("step")
+    step_data = body.get("step_data")
+
+    if step:
+        m.current_step = step
     if step_data:
         if not m.step_data:
             m.step_data = {}
         m.step_data.update(step_data)
-    
+
     db.commit()
-    return {"month": month, "current_step": step, "step_data": m.step_data}
+    return {"month": month, "current_step": m.current_step, "step_data": m.step_data}
 
 
 @router.post("/{month}/reset")

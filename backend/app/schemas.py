@@ -8,7 +8,7 @@ class ProductOut(BaseModel):
     name: str | None = None
     spec: str | None = None
     category: str | None = None
-    cost: Decimal | None = None
+    cost: float | None = None  # float → JSON 不带尾零（如7.623而非7.6230000000）
 
     class Config:
         from_attributes = True

@@ -133,7 +133,7 @@ export default function SalaryPolicy() {
   const handleExportExcel = async () => {
     if (!currentVersion) return;
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("salary_token");
       const response = await fetch(`/api/salary-policies/${currentVersion.id}/export/excel`, {
         headers: { Authorization: `Bearer ${token}` },
       });

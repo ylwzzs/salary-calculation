@@ -77,6 +77,8 @@ export interface MonthInfo {
   sales_file?: string | null;
   gifts_file?: string | null;
   rate_version_id?: number | null;
+  current_step?: string;
+  step_data?: Record<string, boolean>;
 }
 
 export const monthsApi = {

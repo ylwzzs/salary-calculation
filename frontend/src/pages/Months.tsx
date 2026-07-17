@@ -1,13 +1,20 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { monthsApi, type MonthInfo } from "../api";
+import { monthsApi, monthStepApi, type MonthInfo } from "../api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus } from "lucide-react";
+import { Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+
+const STEP_LABELS: Record<string, string> = {
+  import: "① 导入数据",
+  targets: "② 配置目标",
+  duty: "③ 当班确认",
+  results: "④ 待计算",
+};
 
 export default function Months() {
   const nav = useNavigate();
@@ -26,6 +33,36 @@ export default function Months() {
     toast.success("已建月"); setOpen(false); load();
   };
 
+  const handleCardClick = (m: MonthInfo) => {
+    if (m.status === "computed") {
+      nav(`/months/${m.month}?step=results`);
+    } else {
+      const step = (m as any).current_step || "import";
+      nav(`/months/${m.month}?step=${step}`);
+    }
+  };
+
+  const handleReset = async (e: React.MouseEvent, month: string) => {
+    e.stopPropagation();
+    if (!confirm("确定重新计算？将清除现有结果并回到第一步。")) return;
+    try {
+      await monthStepApi.reset(month);
+      toast.success("已重置");
+      load();
+      nav(`/months/${month}?step=import`);
+    } catch {
+      toast.error("重置失败");
+    }
+  };
+
+  const getStepSummary = (m: MonthInfo) => {
+    if (m.status === "computed") {
+      return { label: "已计算", color: "default", summary: "所有步骤已完成" };
+    }
+    const step = (m as any).current_step || "import";
+    return { label: STEP_LABELS[step] || "进行中", color: "secondary" };
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -36,18 +73,40 @@ export default function Months() {
         <div className="rounded-lg border border-dashed border-zinc-300 p-10 text-center text-zinc-400 text-sm">暂无月份数据，点击上方「新建月份」开始</div>
       )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {rows.map((m) => (
-          <div key={m.month} onClick={() => nav(`/months/${m.month}`)}
-            className="rounded-lg border border-zinc-200 bg-white p-4 cursor-pointer hover:border-zinc-300 hover:shadow-sm transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-semibold text-zinc-900">{m.month}</span>
-              <Badge variant={m.status === "computed" ? "default" : "secondary"}>{m.status === "computed" ? "已计算" : "进行中"}</Badge>
+        {rows.map((m) => {
+          const status = getStepSummary(m);
+          return (
+            <div
+              key={m.month}
+              onClick={() => handleCardClick(m)}
+              className={cn(
+                "rounded-lg border bg-white p-4 cursor-pointer hover:shadow-sm transition-all group",
+                m.status === "computed" ? "border-emerald-200" : "border-zinc-200 hover:border-blue-200"
+              )}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-semibold text-zinc-900">{m.month}</span>
+                <div className="flex items-center gap-2">
+                  <Badge variant={m.status === "computed" ? "default" : "secondary"}>
+                    {status.label}
+                  </Badge>
+                  {m.status === "computed" && (
+                    <button
+                      onClick={(e) => handleReset(e, m.month)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-400 hover:text-orange-500"
+                      title="重新计算"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="text-xs text-zinc-400 space-y-0.5">
+                <p>销售: {m.sales_file ? "✓" : "—"}　让利: {m.gifts_file ? "✓" : "—"}</p>
+              </div>
             </div>
-            <div className="text-xs text-zinc-400 space-y-0.5">
-              <p>销售: {m.sales_file ? "✓" : "—"}　让利: {m.gifts_file ? "✓" : "—"}</p>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -62,4 +121,8 @@ export default function Months() {
       </Dialog>
     </div>
   );
+}
+
+function cn(...classes: (string | false | undefined | null)[]) {
+  return classes.filter(Boolean).join(" ");
 }

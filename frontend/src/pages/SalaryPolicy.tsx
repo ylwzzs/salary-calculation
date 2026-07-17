@@ -196,7 +196,6 @@ export default function SalaryPolicy() {
       toast.error(e.message || "复制失败");
     }
   };
-  };
 
   const updateRate = (cls: string, bucket: string, tier: string, value: string) => {
     setEditContent((prev) => {

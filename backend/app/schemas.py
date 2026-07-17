@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class ProductOut(BaseModel):
@@ -106,6 +106,13 @@ class SalaryPolicyOut(BaseModel):
     created_by: str | None = None
     content: SalaryPolicyContent
     note: str | None = None
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def _serialize_created_at(cls, value):
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return value
 
     class Config:
         from_attributes = True

@@ -63,3 +63,6 @@ app.include_router(months_router.router)
 
 from backend.app.routers import workflow as workflow_router
 app.include_router(workflow_router.router)
+
+from backend.app.routers import salary_policies as salary_policies_router
+app.include_router(salary_policies_router.router)

@@ -200,12 +200,13 @@ function AttendanceDetail({ month, person, store }: { month: string; person: str
 }
 
 function CommissionDetail({ month, person, store }: { month: string; person: string; store: string }) {
-  const tiers = [
+  // 示例数据：提成明细按商品档位分类，含标签
+  const tiers: { name: string; sales: number; rate: string; commission: number; tag?: { label: string; icon: string; color: string } }[] = [
     { name: "常温高毛", sales: 6500, rate: "12%", commission: 780 },
     { name: "常温低毛", sales: 3200, rate: "7%", commission: 224 },
     { name: "低温高毛", sales: 4000, rate: "13%", commission: 520 },
     { name: "低温低毛", sales: 1200, rate: "9%", commission: 108 },
-    { name: "特价", sales: 300, rate: "1%", commission: 3 },
+    { name: "特价", sales: 300, rate: "1%", commission: 3, tag: { label: "赠送", icon: "🎁", color: "bg-blue-50 text-blue-700 border-blue-200" } },
   ];
 
   return (
@@ -220,6 +221,7 @@ function CommissionDetail({ month, person, store }: { month: string; person: str
             <TableHead className="text-right">销售额</TableHead>
             <TableHead className="text-right">提成比例</TableHead>
             <TableHead className="text-right">提成金额</TableHead>
+            <TableHead className="w-20">标签</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -236,11 +238,21 @@ function CommissionDetail({ month, person, store }: { month: string; person: str
               <TableCell className="text-right tnum">¥{t.sales.toFixed(0)}</TableCell>
               <TableCell className="text-right">{t.rate}</TableCell>
               <TableCell className="text-right tnum font-medium">¥{t.commission.toFixed(0)}</TableCell>
+              <TableCell>
+                {t.tag && (
+                  <span className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded ${t.tag.color}`}>
+                    {t.tag.icon} {t.tag.label}
+                  </span>
+                )}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-      <p className="text-xs text-zinc-400">点击商品档位查看相关商品明细</p>
+      <p className="text-xs text-zinc-400">
+        点击商品档位查看相关商品明细　
+        <span className="text-blue-500">🎁 赠送</span> · <span className="text-red-500">↩️ 退款</span> · <span className="text-amber-500">🔄 调整</span>
+      </p>
     </div>
   );
 }

@@ -151,6 +151,13 @@ class AnomalyOut(BaseModel):
     created_at: str | None = None
     resolved_at: str | None = None
 
+    @field_validator("created_at", "resolved_at", mode="before")
+    @classmethod
+    def _serialize_datetime(cls, value):
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return value
+
     class Config:
         from_attributes = True
 

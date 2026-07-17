@@ -221,3 +221,9 @@ export const dutyTransferApi = {
       salesperson,
     }).then(r => r.data),
 };
+
+// —— 预检 ——
+export const workflowApiExtended = {
+  checkAnomalies: (month: string) =>
+    http.post<{ total: number; anomalies: any[] }>(`/months/${month}/check-anomalies`).then(r => r.data),
+};

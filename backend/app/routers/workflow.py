@@ -138,13 +138,76 @@ def transfer_duty(
 
 from decimal import Decimal
 from collections import defaultdict
-from salary_engine.importer import load_gift_keys_xlsx
-from salary_engine.calculator import compute
+from salary_engine.importer import load_gift_keys_xlsx, load_sales_xlsx as _load_sales
+from salary_engine.calculator import compute, clean_store as _clean
+from salary_engine.onduty import infer_duty as _infer
 from backend.app.services.engine_bridge import (
     rates_from_db, products_from_db, stores_from_db, targets_from_db,
     duty_override_from_db, days_in_month,
 )
-from backend.app.db import Result, RateVersion
+from backend.app.db import Result, RateVersion, Anomaly, Store, Product, MonthlyTarget
+
+
+@router.post("/months/{month}/check-anomalies")
+def check_anomalies(
+    month: str,
+    _: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """预检6类异常并存入数据库"""
+    m = _get_month(db, month)
+    if not m.sales_file:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "尚未导入销售流水")
+
+    from backend.app.services.anomaly_checker import AnomalyChecker
+
+    sales = _load_sales_lines(m.sales_file)
+
+    checker = AnomalyChecker(db, month)
+
+    # 异常1: 门店不存在
+    store_names = list({clean_store(s.store) for s in sales})
+    checker.check_store_exists(store_names)
+
+    # 异常2: 商品不存在
+    barcodes = list({s.barcode for s in sales if s.barcode})
+    checker.check_product_exists(barcodes)
+
+    # 异常3: 门店无目标
+    all_stores = db.query(Store).all()
+    targeted = set(
+        row[0]
+        for row in db.query(MonthlyTarget.store).filter(MonthlyTarget.month == month).all()
+    )
+    checker.check_targets(
+        [
+            {"name": s.name, "exclude_assessment": s.exclude_assessment}
+            for s in all_stores
+        ],
+        targeted,
+    )
+
+    # 异常4: 商品信息不完整
+    checker.check_products_complete(barcodes)
+
+    # 清除旧异常
+    db.query(Anomaly).filter(Anomaly.month == month).delete()
+
+    # 写入新异常
+    anomalies = checker.get_anomalies()
+    for a in anomalies:
+        from datetime import datetime
+        db.add(Anomaly(
+            month=a["month"],
+            anomaly_type=a["anomaly_type"],
+            entity_type=a["entity_type"],
+            entity_id=a["entity_id"],
+            description=a["description"],
+            status="pending",
+            created_at=datetime.utcnow(),
+        ))
+    db.commit()
+    return {"total": len(anomalies), "anomalies": anomalies}
 
 
 def _run_compute(db, month: str):

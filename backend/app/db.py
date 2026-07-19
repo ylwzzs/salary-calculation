@@ -98,10 +98,11 @@ def get_db():
 class Month(Base):
     __tablename__ = "months"
     month = Column(String, primary_key=True)     # YYYY-MM
-    status = Column(String, default="draft")     # draft | computed
+    status = Column(String, default="draft")     # draft | computing | computed
     sales_file = Column(String, nullable=True)   # 上传的销售流水路径
     gifts_file = Column(String, nullable=True)   # 上传的让利明细路径
     rate_version_id = Column(Integer, nullable=True)  # 计算时锁定的比例表版本
+    results_stale = Column(Boolean, default=True)  # 输入变更后置 true，compute 后置 false
     policy_version_id = Column(Integer, ForeignKey("salary_policy_versions.id"), nullable=True)
     policy_version = relationship("SalaryPolicyVersion")
     current_step = Column(String(20), default="import")  # import/targets/duty/results

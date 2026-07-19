@@ -375,6 +375,31 @@ def results(month: str, _: User = Depends(current_user), db: Session = Depends(g
     return {"salary": salary, "breakdown": breakdown}
 
 
+def _sales_item(r) -> Dict[str, Any]:
+    """把 SalesRecord 映射成前端 SalesItem 全字段字典。
+    sales_detail 与 tier_detail 共用（DRY），保证前端抽屉字段契约一致。"""
+    return {
+        "id": r.id,
+        "receipt": r.receipt,
+        "src_order": r.src_order,
+        "store": r.store,
+        "sale_date": r.sale_date.isoformat(),
+        "barcode": r.barcode,
+        "product_name": r.product_name,
+        "qty": float(r.qty),
+        "amount": round(float(r.amount), 2),
+        "unit_price": round(float(r.unit_price), 2),
+        "salesperson": r.salesperson,
+        "cashier": r.cashier,
+        "is_return": r.is_return,
+        "is_online": r.is_online,
+        "tag": r.tag,
+        "original_store": r.original_store,
+        "original_date": r.original_date.isoformat() if r.original_date else None,
+        "transfer_reason": r.transfer_reason,
+    }
+
+
 @router.get("/months/{month}/sales-detail")
 def sales_detail(month: str, store: str, person: str, date: str,
                  _: User = Depends(current_user), db: Session = Depends(get_db)):
@@ -389,41 +414,22 @@ def sales_detail(month: str, store: str, person: str, date: str,
         SalesRecord.sale_date == target_date,
     ).order_by(SalesRecord.receipt, SalesRecord.id).all()
 
-    items = []
-    for r in records:
-        items.append({
-            "id": r.id,
-            "receipt": r.receipt,
-            "src_order": r.src_order,
-            "store": r.store,
-            "sale_date": r.sale_date.isoformat(),
-            "barcode": r.barcode,
-            "product_name": r.product_name,
-            "qty": float(r.qty),
-            "amount": round(float(r.amount), 2),
-            "unit_price": round(float(r.unit_price), 2),
-            "salesperson": r.salesperson,
-            "cashier": r.cashier,
-            "is_return": r.is_return,
-            "is_online": r.is_online,
-            "tag": r.tag,
-            "original_store": r.original_store,
-            "original_date": r.original_date.isoformat() if r.original_date else None,
-            "transfer_reason": r.transfer_reason,
-        })
-
+    items = [_sales_item(r) for r in records]
     return {"items": items}
 
 
 @router.get("/months/{month}/tier-detail")
 def tier_detail(month: str, store: str, person: str, bucket: str,
                 _: User = Depends(current_user), db: Session = Depends(get_db)):
-    """某人某店某档位的逐笔明细（读物化 DetailRow，零重算）。"""
-    rows = db.query(DetailRow).filter_by(month=month, store=store, person=person).all()
-    items = [{"barcode": d.barcode, "product_name": d.product_name, "tier": d.tier,
-              "amount": round(float(d.amount), 2), "commission": round(float(d.commission), 2),
-              "tag": d.tag, "sale_date": d.sale_date.isoformat()}
-             for d in rows if d.tier == bucket]
+    """某人某店某档位的逐笔明细（读物化 DetailRow JOIN SalesRecord，零重算，字段与 sales_detail 一致）。
+    tier 仍来自 DetailRow（单一真值源，无需重推导）；JOIN SalesRecord 取前端所需全字段。"""
+    from backend.app.db import SalesRecord
+    rows = (db.query(DetailRow, SalesRecord)
+            .join(SalesRecord, SalesRecord.id == DetailRow.sales_record_id)
+            .filter(DetailRow.month == month, DetailRow.store == store,
+                    DetailRow.person == person, DetailRow.tier == bucket)
+            .all())
+    items = [_sales_item(sr) for _, sr in rows]
     return {"items": items}
 
 

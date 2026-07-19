@@ -163,6 +163,18 @@ def test_tier_detail_does_not_recompute(tmp_path, client, monkeypatch):
     assert spy.call_count == 0, "tier_detail 不应触发全量重算（应读物化 DetailRow）"
     items = r.json()["items"]
     assert items, "应当返回低温高毛档位的明细行"
+    # 前端契约：tier_detail 必须返回完整 SalesItem（与 sales_detail 一致），而非 SLIM 子集
+    it = items[0]
+    expected_keys = {"id", "receipt", "src_order", "store", "sale_date", "barcode",
+                     "product_name", "qty", "amount", "unit_price", "salesperson",
+                     "cashier", "is_return", "is_online", "tag", "original_store",
+                     "original_date", "transfer_reason"}
+    assert expected_keys.issubset(it.keys()), f"缺字段: {expected_keys - set(it.keys())}"
+    # 关键字段不再是 SLIM 形态独有：receipt/qty/unit_price 来自 JOIN 的 SalesRecord
+    assert it["receipt"] == "R001"
+    assert it["qty"] == 1.0
+    assert it["unit_price"] == 3.0
+    assert it["barcode"] == "6920001"
 
 
 def test_compute_recompute_preserves_policy_lock(tmp_path, client, db_session):

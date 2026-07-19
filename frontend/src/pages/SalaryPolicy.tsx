@@ -416,7 +416,6 @@ export default function SalaryPolicy() {
                         value={rates?.[cls]?.[bucket]?.[tier] ?? ""}
                         onChange={(e) => updateRate(cls, bucket, tier, e.target.value)}
                         className="h-7 w-14 text-center"
-                        disabled={tier === "特价"}
                       />
                     </TableCell>
                   ))}
@@ -604,7 +603,7 @@ export default function SalaryPolicy() {
               <div>
                 <h3 className="text-sm font-medium text-zinc-700 mb-2">提成比例表 (%)</h3>
                 <p className="text-xs text-zinc-400 mb-3">
-                  特价档固定为 1%，不可编辑。其他单元格可输入提成比例。
+                  所有单元格均可输入提成比例。
                 </p>
                 {editContent?.commission_rates && renderCommissionRatesEdit(editContent.commission_rates)}
               </div>

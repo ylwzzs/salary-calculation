@@ -123,6 +123,48 @@ def test_compute_materializes_result_and_detail(tmp_path, client, db_session):
     assert m.policy_version_id is not None
 
 
+def test_tier_summary_does_not_recompute(tmp_path, client, monkeypatch):
+    """T4.2：tier_summary 必须读物化 DetailRow，零 _run_compute 调用（治 R1/R2 + C1）。"""
+    from unittest.mock import MagicMock
+    import backend.app.routers.workflow as workflow
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    spy = MagicMock()
+    monkeypatch.setattr(workflow, "_run_compute", spy)
+
+    r = client.get("/months/2026-06/tier-summary", headers=h,
+                   params={"store": "福景店", "person": "高睿"})
+    assert r.status_code == 200, r.text
+    assert spy.call_count == 0, "tier_summary 不应触发全量重算（应读物化 DetailRow）"
+    data = r.json()
+    assert isinstance(data.get("tiers"), list)
+    # 与 compute 一致：A 类 GE_100 低温高毛 13% × 3 = 0.39
+    assert abs(data["total_commission"] - 0.39) < 0.01, data
+    # rate 已是 SalaryPolicyVersion 口径（13% 物化），不应再读 legacy RateVersion
+    assert any(t["name"] == "低温高毛" and abs(t["rate"] - 0.13) < 0.001 for t in data["tiers"])
+
+
+def test_tier_detail_does_not_recompute(tmp_path, client, monkeypatch):
+    """T4.2：tier_detail 必须读物化 DetailRow，零 _run_compute 调用。"""
+    from unittest.mock import MagicMock
+    import backend.app.routers.workflow as workflow
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    spy = MagicMock()
+    monkeypatch.setattr(workflow, "_run_compute", spy)
+
+    r = client.get("/months/2026-06/tier-detail", headers=h,
+                   params={"store": "福景店", "person": "高睿", "bucket": "低温高毛"})
+    assert r.status_code == 200, r.text
+    assert spy.call_count == 0, "tier_detail 不应触发全量重算（应读物化 DetailRow）"
+    items = r.json()["items"]
+    assert items, "应当返回低温高毛档位的明细行"
+
+
 def test_compute_recompute_preserves_policy_lock(tmp_path, client, db_session):
     """H10：首次 /compute 锁定 policy_version_id；策略变更后再次 /compute 不应覆盖锁定。
     若 do_compute 里 `if m.policy_version_id is None` 守卫被删除，本测试必须失败。"""

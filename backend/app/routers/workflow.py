@@ -208,7 +208,7 @@ from backend.app.services.engine_bridge import (
     duty_override_from_db, days_in_month,
 )
 from backend.app.db import (
-    Result, DetailRow, RateVersion, SalaryPolicyVersion,
+    Result, DetailRow, SalaryPolicyVersion,
     Anomaly, Store, Product, MonthlyTarget,
 )
 
@@ -418,162 +418,40 @@ def sales_detail(month: str, store: str, person: str, date: str,
 @router.get("/months/{month}/tier-detail")
 def tier_detail(month: str, store: str, person: str, bucket: str,
                 _: User = Depends(current_user), db: Session = Depends(get_db)):
-    """获取某人某店某档位的商品明细（与tier-summary逻辑一致）"""
-    from backend.app.db import SalesRecord, Duty
-    from salary_engine.margin import gross_margin, classify_tier
-
-    # 获取当班日期
-    duty_dates = set()
-    for d in db.query(Duty).filter_by(month=month, store=store, salesperson=person).all():
-        duty_dates.add(d.duty_date)
-
-    # 从数据库查询所有记录（包括退货）
-    all_records = db.query(SalesRecord).filter(
-        SalesRecord.month == month,
-        SalesRecord.store == store,
-        SalesRecord.salesperson == person,
-        SalesRecord.tag != "赠送",
-        SalesRecord.tag != "不计提成",
-    ).order_by(SalesRecord.receipt, SalesRecord.id).all()
-
-    products = {p.barcode: p for p in db.query(Product).all()}
-
-    # 按 (receipt, barcode) 分组，用 src_order 匹配退货
-    groups = defaultdict(lambda: {"sales": [], "returns": []})
-    for r in all_records:
-        if r.sale_date not in duty_dates:
-            continue
-        if r.is_online:
-            continue
-        p = products.get(r.barcode)
-        if not p:
-            continue
-        if r.is_return:
-            g = groups.get((r.src_order, r.barcode)) if r.src_order else None
-            if g and g["sales"]:
-                g["returns"].append(r)
-            else:
-                groups[("_return_" + r.receipt, r.barcode)]["returns"].append(r)
-        else:
-            groups[(r.receipt, r.barcode)]["sales"].append(r)
-
-    # 筛选属于该档位的记录组，返回明细
-    def _to_item(r):
-        return {
-            "id": r.id, "receipt": r.receipt, "src_order": r.src_order,
-            "store": r.store, "sale_date": r.sale_date.isoformat(),
-            "barcode": r.barcode, "product_name": r.product_name,
-            "qty": float(r.qty), "amount": round(float(r.amount), 2),
-            "unit_price": round(float(r.unit_price), 2),
-            "salesperson": r.salesperson, "cashier": r.cashier,
-            "is_return": r.is_return, "is_online": r.is_online, "tag": r.tag,
-            "original_store": r.original_store,
-            "original_date": r.original_date.isoformat() if r.original_date else None,
-            "transfer_reason": r.transfer_reason,
-        }
-
-    items = []
-    for key, g in groups.items():
-        if not g["sales"]:
-            for r in g["returns"]:
-                p = products.get(r.barcode)
-                if not p:
-                    continue
-                margin = gross_margin(r.unit_price, p.cost) if p.cost else Decimal(0)
-                try:
-                    product_tier = classify_tier(p.category, margin)
-                except (ValueError, TypeError):
-                    product_tier = "特价"
-                if product_tier == bucket:
-                    items.append(_to_item(r))
-            continue
-
-        s0 = g["sales"][0]
-        p = products.get(s0.barcode)
-        if not p:
-            continue
-
-        margin = gross_margin(s0.unit_price, p.cost) if p.cost else Decimal(0)
-        try:
-            product_tier = classify_tier(p.category, margin)
-        except (ValueError, TypeError):
-            product_tier = "特价"
-
-        if product_tier != bucket:
-            continue
-
-        for r in g["sales"]:
-            items.append(_to_item(r))
-        for r in g["returns"]:
-            items.append(_to_item(r))
-
+    """某人某店某档位的逐笔明细（读物化 DetailRow，零重算）。"""
+    rows = db.query(DetailRow).filter_by(month=month, store=store, person=person).all()
+    items = [{"barcode": d.barcode, "product_name": d.product_name, "tier": d.tier,
+              "amount": round(float(d.amount), 2), "commission": round(float(d.commission), 2),
+              "tag": d.tag, "sale_date": d.sale_date.isoformat()}
+             for d in rows if d.tier == bucket]
     return {"items": items}
 
 
 @router.get("/months/{month}/tier-summary")
 def tier_summary(month: str, store: str, person: str,
                  _: User = Depends(current_user), db: Session = Depends(get_db)):
-    """获取某人某店的档位汇总（直接调用计算器，保证与主计算完全一致）"""
-    result = _run_compute(db, month)
-
-    # 从计算器结果提取该人该店的details
-    details = [d for d in result.details if d.salesperson == person and d.store == store]
-    if not details:
-        return {"tiers": [], "total_sales": 0, "total_commission": 0, "bucket": "LT_70", "target": 0}
-
-    # 获取门店信息和费率表（使用锁定版本）
-    store_obj = db.get(Store, store)
-    store_class = store_obj.store_class if store_obj else "A"
-    m = db.get(Month, month)
-    rate_version = db.get(RateVersion, m.rate_version_id) if m.rate_version_id else db.query(RateVersion).filter_by(is_current=True).first()
-    rate_table = rate_version.rates if rate_version else {}
-
-    # 获取达标率档位
-    bucket = details[0].bucket
-
-    # 获取目标（按出勤天数折算的个人目标，与计算器一致）
-    target = db.query(MonthlyTarget).filter_by(month=month, store=store).first()
-    monthly_target = float(target.target) if target else 0
-    # 计算出勤天数（从details中提取不同的日期）
-    duty_days = len(set(d.sale_date for d in details))
-    days_in_month = 30  # 简化处理
-    daily_target = monthly_target / days_in_month
-    personal_target = daily_target * duty_days
-
-    # 按档位汇总
-    tier_sales = defaultdict(float)
-    tier_commission = defaultdict(float)
-    for d in details:
-        tier_sales[d.tier] += float(d.amount)
-        tier_commission[d.tier] += float(d.commission)
-
-    total_sales = sum(tier_sales.values())
-    total_commission = sum(tier_commission.values())
-
-    tiers_result = []
-    for tier_name in ["常温高毛", "常温低毛", "低温高毛", "低温低毛", "特价"]:
-        if tier_name == "特价":
-            rate = 0.01
-        else:
-            rate = float(Decimal(rate_table.get(store_class, {}).get(bucket, {}).get(tier_name, "0")))
-
-        tiers_result.append({
-            "name": tier_name,
-            "sales": round(tier_sales.get(tier_name, 0), 2),
-            "rate": rate,
-            "rate_percent": f"{rate * 100:.0f}%",
-            "commission": round(tier_commission.get(tier_name, 0), 2),
-        })
-
-    return {
-        "tiers": tiers_result,
-        "total_sales": round(total_sales, 2),
-        "total_commission": round(total_commission, 2),
-        "bucket": bucket,
-        "target": round(personal_target, 2),
-        "monthly_target": round(monthly_target, 2),
-        "duty_days": duty_days,
-    }
+    """某人某店档位汇总（读物化 DetailRow，零重算；rate 已是 SalaryPolicyVersion 口径）。"""
+    rows = db.query(DetailRow).filter_by(month=month, store=store, person=person).all()
+    if not rows:
+        return {"tiers": [], "total_sales": 0, "total_commission": 0, "bucket": "LT_70", "target": 0,
+                "monthly_target": 0, "duty_days": 0}
+    bucket = rows[0].bucket
+    tier_sales = defaultdict(float); tier_comm = defaultdict(float)
+    for d in rows:
+        tier_sales[d.tier] += float(d.amount); tier_comm[d.tier] += float(d.commission)
+    tgt = db.query(MonthlyTarget).filter_by(month=month, store=store).first()
+    monthly_target = float(tgt.target) if tgt else 0
+    duty_days = db.query(Duty).filter_by(month=month, store=store, salesperson=person).count()
+    personal_target = monthly_target / (days_in_month(month) or 30) * duty_days
+    tiers = []
+    for name in ["常温高毛", "常温低毛", "低温高毛", "低温低毛", "特价"]:
+        rate = next((float(d.rate) for d in rows if d.tier == name), 0.0)
+        tiers.append({"name": name, "sales": round(tier_sales.get(name, 0), 2), "rate": rate,
+                      "rate_percent": f"{rate * 100:.0f}%", "commission": round(tier_comm.get(name, 0), 2)})
+    return {"tiers": tiers, "total_sales": round(sum(tier_sales.values()), 2),
+            "total_commission": round(sum(tier_comm.values()), 2), "bucket": bucket,
+            "target": round(personal_target, 2), "monthly_target": round(monthly_target, 2),
+            "duty_days": duty_days}
 
 
 import tempfile

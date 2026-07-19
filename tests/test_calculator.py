@@ -111,3 +111,31 @@ def test_per_store_achievement_multi_day_same_store(products, stores):
     assert r.breakdown[("高睿", "福景店")]["achievement"] == Decimal("1.1")
     # 2200 × A类低温高毛13% = 286
     assert r.commission_by_person["高睿"] == Decimal("286")
+
+
+def _sl(receipt, store, d, amount, sp="高睿", barcode="B1"):
+    return SalesLine(receipt=receipt, src_order=None, store=store, sale_date=d,
+                     barcode=barcode, product_name="奶", qty=1, amount=Decimal(amount),
+                     unit_price=Decimal(amount), is_return=False, is_online=False,
+                     cashier="", salesperson=sp)
+
+
+def test_c3_duty_days_count_zero_sales_day():
+    # C3：当班天数应取自当班表（含零销售当班日），而非『有销售的天数』。
+    # 本用例为审计反例：6/2 当班但零销售 → 必须计入目标，否则达成率虚高。
+    from salary_engine.models import Product, Store, RateTable
+    products = {"B1": Product("B1", "奶", "", "常温奶", Decimal(5), False)}
+    stores = {"福景店": Store("福景店", "1组", "A", "")}
+    targets = {"福景店": Decimal(3000)}
+    rate_table = RateTable(version=1, effective_from=date(2026, 6, 1), rates={
+        ("A", "GE_100", "常温高毛"): Decimal("0.13"),
+        ("A", "LT_70", "常温高毛"): Decimal("0.09"),
+    })
+    sales = [_sl("R1", "福景店", date(2026, 6, 1), 100)]   # 仅 6/1 有销售
+    # 当班表：高睿 6/1 与 6/2 都当班（6/2 零销售）
+    duty = {("福景店", date(2026, 6, 1)): "高睿", ("福景店", date(2026, 6, 2)): "高睿"}
+    res = compute(sales, products, stores, targets, rate_table, "2026-06", 30, duty_override=duty)
+    bd = res.breakdown[("高睿", "福景店")]
+    # 正确：目标=3000/30*2=200，达成=100/200=0.5 → LT_70
+    assert bd["target"] == Decimal(200), f"target={bd['target']}"
+    assert bd["bucket"] == "LT_70", f"bucket={bd['bucket']}"

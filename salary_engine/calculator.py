@@ -105,6 +105,12 @@ def compute(sales_lines, products, stores, targets, rate_table,
         if p is None:
             continue  # 无当班人：不进聚合，其销售按笔 fallback 计
         ps_sales[(p, s)] += net
+    # 当班天数（含零销售当班日）——修 C3：目标从当班表累加，而非『有销售的天数』。
+    # 否则零销售当班日不会被计入目标 → 目标偏低 → 达成率虚高 → 提成多发。
+    for (s, d) in duty.keys():
+        p = _resolve_duty(duty, s, d, None)
+        if p is None:
+            continue
         tgt = targets.get(s)
         if not tgt:
             missing_target_stores.add(s)

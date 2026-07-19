@@ -9,12 +9,15 @@ from backend.app.db import SessionLocal, RateVersion, SalaryPolicyVersion
 
 
 def _to_percents(rates: dict) -> dict:
-    """{cls:{bucket:{tier: 分数字符串}}} -> {... 百数字符串}。"""
+    """{cls:{bucket:{tier: 分数字符串}}} -> {... 百数字符串}。
+
+    归一化为整数字符串（"13" 而非 "13.00"），与 UI 编辑器/种子值一致。
+    种子提成比例均为整数百分数（见 salary_engine.rates._RATES），故 int() 安全。"""
     out: dict = {}
     for cls, by_bucket in (rates or {}).items():
         for bucket, by_tier in by_bucket.items():
             for tier, frac in by_tier.items():
-                out.setdefault(cls, {}).setdefault(bucket, {})[tier] = str(Decimal(str(frac)) * 100)
+                out.setdefault(cls, {}).setdefault(bucket, {})[tier] = str(int(Decimal(str(frac)) * 100))
     return out
 
 

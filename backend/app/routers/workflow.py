@@ -295,7 +295,10 @@ def _run_compute(db, month: str):
     sales = _load_sales_lines(m.sales_file)
     gifts = load_gift_keys_xlsx(m.gifts_file) if m.gifts_file else set()
     # 使用锁定的工资策略版本，若无则用当前激活版本（ADR-009：策略存百分数，边界 ÷100）
-    rate_table = rates_from_db(db, m.policy_version_id)
+    try:
+        rate_table = rates_from_db(db, m.policy_version_id)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
     result = compute(
         sales_lines=sales,
         products=products_from_db(db),

@@ -3,8 +3,6 @@ import calendar
 from datetime import date
 from decimal import Decimal
 
-from fastapi import HTTPException, status
-
 from salary_engine.models import Product, Store, RateTable, SalesLine
 from backend.app.db import Product as ProductRow, Store as StoreRow
 from backend.app.db import MonthlyTarget, SalaryPolicyVersion, Duty, SalesRecord
@@ -26,8 +24,7 @@ def rates_from_db(db, policy_version_id: int = None) -> RateTable:
     else:
         pv = db.query(SalaryPolicyVersion).filter_by(is_current=True).first()
     if not pv:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, "费率策略不存在，请先创建并激活工资策略")
+        raise ValueError("费率策略不存在，请先创建并激活工资策略")
     cr = (pv.content or {}).get("commission_rates", {}) or {}
     rates = {}
     for cls, by_bucket in cr.items():

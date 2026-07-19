@@ -45,6 +45,7 @@ def test_rates_from_db_reads_salary_policy_divides_by_100():
 
 def test_rates_from_db_locks_to_policy_version_id():
     """指定 policy_version_id 时用锁定版本，忽略 is_current。"""
+    # 注：写端锁定 m.policy_version_id 在 T4.1 实现；此处仅验读端锁定逻辑。
     s = _db()
     s.add(SalaryPolicyVersion(
         version=1, effective_from=date(2026, 1, 1), is_current=True,
@@ -61,14 +62,11 @@ def test_rates_from_db_locks_to_policy_version_id():
 
 
 def test_rates_from_db_404_when_no_policy():
-    """没有激活策略时返回 404。"""
-    from fastapi import HTTPException
+    """没有激活策略时抛 ValueError（路由层翻译 404，见 workflow._run_compute）。"""
+    import pytest
     s = _db()
-    try:
+    with pytest.raises(ValueError):
         rates_from_db(s, None)
-        assert False, "应抛 HTTPException 404"
-    except HTTPException as e:
-        assert e.status_code == 404
 
 
 def test_products_and_targets_bridge():

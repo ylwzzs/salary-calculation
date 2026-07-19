@@ -7,6 +7,9 @@ sqlalchemy>=2.0
 itsdangerous>=2.1
 python-multipart>=0.0.9
 
+# 数据库迁移
+alembic>=1.13
+
 # 文档生成
 pillow==12.3.0
 pymupdf==1.28.0

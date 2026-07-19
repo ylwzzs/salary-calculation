@@ -1,4 +1,5 @@
 import os
+import threading
 from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
@@ -323,6 +324,18 @@ def _run_compute(db, month: str):
     return result
 
 
+# 单进程内按月加锁，防同一月份并发 /compute 叠加 CPU-bound 工作（治 R3 卡死）。
+# 注：仅适用单进程 uvicorn 部署（当前 Docker 单实例）；多进程需换 DB 级锁，超出本任务范围。
+_compute_locks: dict[str, threading.Lock] = {}
+
+
+def _get_lock(month: str) -> threading.Lock:
+    """返回某月份专属的 Lock（惰性创建）。"""
+    if month not in _compute_locks:
+        _compute_locks[month] = threading.Lock()
+    return _compute_locks[month]
+
+
 @router.post("/months/{month}/compute")
 def do_compute(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
     """算一次、物化两表（P4 基础）：
@@ -330,32 +343,54 @@ def do_compute(month: str, _: User = Depends(current_user), db: Session = Depend
     - 逐行 DetailRow（与 SalesRecord 1:1 的提成台账）
     同事务删除-插入-提交，失败回滚；置 status=computed、results_stale=False；
     policy_version_id 仅首次锁定（None 时才写），重算不覆盖（修 H10）。
+
+    T5.2（治 R3）：按月加进程内锁，第二个并发 /compute 立即返回 409；
+    计算前置 status=computing，失败时恢复先前值，避免月份卡死在 computing。
     """
-    result = _run_compute(db, month)
+    lock = _get_lock(month)
+    if not lock.acquire(blocking=False):
+        raise HTTPException(status.HTTP_409_CONFLICT, "该月份正在计算，请稍候")
     try:
-        db.query(Result).filter_by(month=month).delete()
-        db.query(DetailRow).filter_by(month=month).delete()
-        for (person, store), v in result.breakdown.items():
-            db.add(Result(month=month, person=person, store=store,
-                          sales=v["sales"], target=v["target"], achievement=v["achievement"],
-                          bucket=v["bucket"], commission=v["commission"]))
-        for d in result.details:
-            db.add(DetailRow(month=month, sales_record_id=d.sales_record_id, person=d.salesperson,
-                             store=d.store, sale_date=d.sale_date, barcode=d.barcode,
-                             product_name=d.product_name, tier=d.tier, bucket=d.bucket, rate=d.rate,
-                             amount=d.amount, commission=d.commission, tag=d.tag,
-                             is_transferred=False))  # 占位，T7.1 按 SalesRecord 回填
         m = db.get(Month, month)
-        m.status = "computed"
-        m.results_stale = False
-        if m.policy_version_id is None:          # 仅首次锁（修 H10），重算不覆盖
-            cur = db.query(SalaryPolicyVersion).filter_by(is_current=True).first()
-            if cur:
-                m.policy_version_id = cur.id
+        if m is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "月份不存在")
+        if m.status == "computing":
+            raise HTTPException(status.HTTP_409_CONFLICT, "该月份正在计算")
+        prev_status = m.status
+        m.status = "computing"
         db.commit()
-    except Exception:
-        db.rollback()
-        raise
+        try:
+            result = _run_compute(db, month)
+            db.query(Result).filter_by(month=month).delete()
+            db.query(DetailRow).filter_by(month=month).delete()
+            for (person, store), v in result.breakdown.items():
+                db.add(Result(month=month, person=person, store=store,
+                              sales=v["sales"], target=v["target"], achievement=v["achievement"],
+                              bucket=v["bucket"], commission=v["commission"]))
+            for d in result.details:
+                db.add(DetailRow(month=month, sales_record_id=d.sales_record_id, person=d.salesperson,
+                                 store=d.store, sale_date=d.sale_date, barcode=d.barcode,
+                                 product_name=d.product_name, tier=d.tier, bucket=d.bucket, rate=d.rate,
+                                 amount=d.amount, commission=d.commission, tag=d.tag,
+                                 is_transferred=False))  # 占位，T7.1 按 SalesRecord 回填
+            m = db.get(Month, month)
+            m.status = "computed"
+            m.results_stale = False
+            if m.policy_version_id is None:          # 仅首次锁（修 H10），重算不覆盖
+                cur = db.query(SalaryPolicyVersion).filter_by(is_current=True).first()
+                if cur:
+                    m.policy_version_id = cur.id
+            db.commit()
+        except Exception:
+            db.rollback()
+            # 恢复 status，避免失败的 compute 把月份卡在 "computing"
+            m2 = db.get(Month, month)
+            if m2 is not None:
+                m2.status = prev_status
+                db.commit()
+            raise
+    finally:
+        lock.release()
     return {"details": len(result.details), "warnings": result.warnings,
             "total": round(float(sum(result.commission_by_person.values())), 2)}
 

@@ -271,6 +271,56 @@ def test_input_changes_mark_month_stale(client, db_session, tmp_path):
     _assert_stale("import_gifts")
 
 
+def test_compute_single_flight(tmp_path, client, db_session):
+    """T5.2（治 R3）：do_compute 必须按月加锁；同一月份已有计算进行中时，
+    第二次 /compute 应立即返回 409，而不是叠加 CPU-bound 工作。
+    模拟方式：测试线程直接持有该月的锁，再调 /compute 应得 409。"""
+    import backend.app.routers.workflow as wf
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)   # 确保月份存在且已计算
+
+    # 模拟另一个正在进行的 compute：测试线程持有该月的锁
+    lock = wf._get_lock("2026-06")
+    got = lock.acquire(blocking=False)
+    assert got
+    try:
+        r = client.post("/months/2026-06/compute", headers=h)
+        assert r.status_code == 409, f"并发计算应返回 409，实际 {r.status_code}: {r.text}"
+    finally:
+        lock.release()
+
+
+def test_compute_restores_status_on_failure(tmp_path, client, db_session, monkeypatch):
+    """T5.2：计算失败时必须把 status 从 "computing" 恢复到先前值，避免月份卡死。"""
+    import pytest
+    from backend.app.db import Month
+    import backend.app.routers.workflow as wf
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    # 先记下先前状态（应为 computed）
+    db_session.expire_all()
+    prev = db_session.get(Month, "2026-06").status
+    assert prev == "computed"
+
+    # 让 _run_compute 抛异常，模拟计算失败
+    def _boom(db, month):
+        raise RuntimeError("engine exploded")
+    monkeypatch.setattr(wf, "_run_compute", _boom)
+
+    # Starlette TestClient 默认会把服务端异常原样抛出
+    with pytest.raises(RuntimeError):
+        client.post("/months/2026-06/compute", headers=h)
+
+    # 状态应恢复成 computed，而非卡在 computing
+    db_session.expire_all()
+    m = db_session.get(Month, "2026-06")
+    assert m.status == prev, f"失败后 status 应恢复为 {prev}，实际 {m.status}"
+    assert m.status != "computing", "失败后不应卡在 computing"
+
+
 def test_compute_recompute_preserves_policy_lock(tmp_path, client, db_session):
     """H10：首次 /compute 锁定 policy_version_id；策略变更后再次 /compute 不应覆盖锁定。
     若 do_compute 里 `if m.policy_version_id is None` 守卫被删除，本测试必须失败。"""

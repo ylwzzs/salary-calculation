@@ -161,3 +161,31 @@ def test_per_line_detail_rows_sum_to_total():
     assert res.commission_by_person["高睿"] == Decimal("11.70")
     # 匹配退货行带 退货冲抵 标签
     assert any(d.tag == "退货冲抵" and d.amount == Decimal(-10) for d in res.details)
+
+
+def test_excluded_lines_emit_zero_commission_detailrows():
+    products = {"B1": Product("B1", "奶", "", "常温奶", Decimal(5), False),
+                "B2": Product("B2", "非奶", "", "常温奶", Decimal(5), True)}  # exclude_commission
+    stores = {"S": Store("S", "1组", "A", "")}
+    targets = {"S": Decimal(1000)}
+    rt = RateTable(version=1, effective_from=date(2026, 6, 1),
+                   rates={("A", "GE_100", "常温高毛"): Decimal("0.13")})
+    sales = [
+        _sl("R1", "S", date(2026, 6, 1), 100),                       # 有效
+        _sl("R2", "S", date(2026, 6, 1), 20, barcode="B2"),           # 不计提成
+        _sl("R3", "S", date(2026, 6, 1), 30, barcode="B9"),           # 非乳品（B9 不在 products）
+    ]
+    gift_keys = {("R4", "B1")}
+    sales.append(_sl("R4", "S", date(2026, 6, 1), 50))               # 赠送
+    duty = {("S", date(2026, 6, 1)): "高睿"}
+    res = compute(sales, products, stores, targets, rt, "2026-06", 30,
+                  gift_keys=gift_keys, duty_override=duty)
+    tags = {d.tag for d in res.details}
+    assert {"有效计提", "不计提成", "非乳品", "赠送剔除"} <= tags
+    # 剔除行 0 提成
+    assert all(d.commission == 0 for d in res.details
+               if d.tag in ("不计提成", "非乳品", "赠送剔除"))
+    # 不变量：逐行全覆盖入参
+    assert len(res.details) == len(sales)
+    # 总额仅来自有效计提
+    assert sum((d.commission for d in res.details), Decimal(0)) == Decimal("13.00")

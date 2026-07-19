@@ -57,14 +57,17 @@ def compute(sales_lines, products, stores, targets, rate_table,
     missing_target_stores = set()
 
     # 1) 清洗门店名；剔除赠送；跳过非乳品；拆分销售/退货
-    sales, returns = [], []
+    #    剔除行不再静默丢弃，收集到 excluded 末尾逐行发 0 提成 DetailRow（ADR-008 台账全覆盖）
+    sales, returns, excluded = [], [], []
     for ln in sales_lines:
         ln = replace(ln, store=clean_store(ln.store))  # 仅改门店名，保留其余字段
         if (ln.receipt, ln.barcode) in gift_keys:
-            continue  # 赠送剔除
+            excluded.append((ln, "赠送剔除")); continue
         product = products.get(ln.barcode)
-        if product is None or product.exclude_commission:
-            continue  # 非乳品 或 不计入提成
+        if product is None:
+            excluded.append((ln, "非乳品")); continue
+        if product.exclude_commission:
+            excluded.append((ln, "不计提成")); continue
         (returns if ln.is_return else sales).append(ln)
 
     # 2) 按 (receipt, barcode) 聚合销售；精确匹配的退货(src_order+条码命中)并入同组，
@@ -201,6 +204,13 @@ def compute(sales_lines, products, stores, targets, rate_table,
             "bucket": achievement_bucket(ach) if tgt else "LT_70",
             "commission": ps_commission.get(key, Decimal(0)),
         }
+
+    # 剔除行：逐行 0 提成明细（台账全覆盖，ADR-008）
+    for ln, tag in excluded:
+        sp = ln.salesperson or ln.cashier or ""
+        details.append(DetailRow(ln.store, ln.sale_date, sp, ln.barcode, ln.product_name,
+                                 "", "", "", Decimal(0), ln.amount, Decimal(0),
+                                 tag=tag, sales_record_id=getattr(ln, "sales_record_id", None)))
 
     return ComputeResult(details=details,
                          commission_by_person=dict(comm_person),

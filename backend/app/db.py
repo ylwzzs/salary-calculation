@@ -2,7 +2,7 @@
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, Date, DateTime, JSON,
-    UniqueConstraint, ForeignKey, create_engine, event,
+    UniqueConstraint, ForeignKey, create_engine, event, Index,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
@@ -131,6 +131,29 @@ class Result(Base):
     bucket = Column(String, nullable=False)
     commission = Column(Numeric, nullable=False)
     __table_args__ = (UniqueConstraint("month", "person", "store", name="uq_result"),)
+
+
+class DetailRow(Base):
+    """逐笔提成台账（compute 物化，逐行 1:1 对应 SalesRecord）"""
+    __tablename__ = "detail_rows"
+    id = Column(Integer, primary_key=True)
+    month = Column(String, nullable=False, index=True)
+    sales_record_id = Column(Integer, index=True)
+    person = Column(String, nullable=False)
+    store = Column(String, nullable=False)
+    sale_date = Column(Date, nullable=False)
+    barcode = Column(String)
+    product_name = Column(String)
+    tier = Column(String)        # 商品档位
+    bucket = Column(String)      # 达成档
+    rate = Column(Numeric)
+    amount = Column(Numeric, nullable=False)
+    commission = Column(Numeric, nullable=False)
+    tag = Column(String(20), nullable=False)  # 有效计提/退货冲抵/退货未匹配/赠送剔除/不计提成/非乳品
+    is_transferred = Column(Boolean, default=False)
+    __table_args__ = (
+        UniqueConstraint("month", "sales_record_id", name="uq_detail_month_sr"),
+    )
 
 
 class SalesRecord(Base):

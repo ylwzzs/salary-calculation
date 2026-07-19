@@ -294,8 +294,8 @@ def _run_compute(db, month: str):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "尚未导入销售流水")
     sales = _load_sales_lines(m.sales_file)
     gifts = load_gift_keys_xlsx(m.gifts_file) if m.gifts_file else set()
-    # 使用锁定的费率版本，若无则用当前版本
-    rate_table = rates_from_db(db, m.rate_version_id)
+    # 使用锁定的工资策略版本，若无则用当前激活版本（ADR-009：策略存百分数，边界 ÷100）
+    rate_table = rates_from_db(db, m.policy_version_id)
     result = compute(
         sales_lines=sales,
         products=products_from_db(db),

@@ -3,9 +3,11 @@ import calendar
 from datetime import date
 from decimal import Decimal
 
+from fastapi import HTTPException, status
+
 from salary_engine.models import Product, Store, RateTable, SalesLine
 from backend.app.db import Product as ProductRow, Store as StoreRow
-from backend.app.db import MonthlyTarget, RateVersion, Duty, SalesRecord
+from backend.app.db import MonthlyTarget, SalaryPolicyVersion, Duty, SalesRecord
 
 
 def days_in_month(month: str) -> int:
@@ -13,20 +15,26 @@ def days_in_month(month: str) -> int:
     return calendar.monthrange(y, m)[1]
 
 
-def rates_from_db(db, rate_version_id: int = None) -> RateTable:
-    """加载费率表。指定rate_version_id则用锁定版本，否则用当前版本。"""
-    if rate_version_id:
-        rv = db.get(RateVersion, rate_version_id)
+def rates_from_db(db, policy_version_id: int = None) -> RateTable:
+    """加载费率表（单一真值源：SalaryPolicyVersion）。
+
+    策略存百分数（与 UI 编辑器一致），此处 ÷100 转分数供引擎使用（ADR-009）。
+    指定 policy_version_id 则用锁定版本，否则取 is_current=True。
+    """
+    if policy_version_id:
+        pv = db.get(SalaryPolicyVersion, policy_version_id)
     else:
-        rv = db.query(RateVersion).filter_by(is_current=True).first()
-    if not rv:
-        raise ValueError("费率表不存在")
+        pv = db.query(SalaryPolicyVersion).filter_by(is_current=True).first()
+    if not pv:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "费率策略不存在，请先创建并激活工资策略")
+    cr = (pv.content or {}).get("commission_rates", {}) or {}
     rates = {}
-    for cls, by_bucket in (rv.rates or {}).items():
+    for cls, by_bucket in cr.items():
         for bucket, by_tier in by_bucket.items():
             for tier, pct in by_tier.items():
-                rates[(cls, bucket, tier)] = Decimal(str(pct))
-    return RateTable(version=rv.version, effective_from=rv.effective_from, rates=rates)
+                rates[(cls, bucket, tier)] = Decimal(str(pct)) / Decimal(100)
+    return RateTable(version=pv.version, effective_from=pv.effective_from, rates=rates)
 
 
 def products_from_db(db) -> dict:

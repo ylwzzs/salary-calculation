@@ -16,6 +16,17 @@ def _sales_xlsx(path):
     wb.save(path)
 
 
+def _policy_content():
+    """构造工资策略内容（commission_rates 存百分数，ADR-009）。"""
+    from salary_engine.rates import _RATES, _TIERS
+    cr = {}
+    for cls, by_bucket in _RATES.items():
+        for bucket, vals in by_bucket.items():
+            for tier, val in zip(_TIERS, vals):
+                cr.setdefault(cls, {}).setdefault(bucket, {})[tier] = str(val)
+    return {"margin_rules": {}, "commission_rates": cr}
+
+
 def test_import_sales_and_gifts(tmp_path, client):
     h = auth_header(client)
     client.post("/months", headers=h, json={"month": "2026-06"})
@@ -48,6 +59,9 @@ def test_infer_and_confirm_duty(tmp_path, client):
 def test_compute_and_result(tmp_path, client):
     h = auth_header(client)
     client.post("/months", headers=h, json={"month": "2026-06"})
+    # 创建并激活工资策略（compute 读 SalaryPolicyVersion，策略存百分数；ADR-009）
+    client.post("/salary-policies", headers=h, json={
+        "effective_from": "2026-01-01", "content": _policy_content()})
     client.put("/stores/福景店", headers=h, json={"name": "福景店", "group": "1组", "store_class": "A"})
     client.put("/products/6920001", headers=h, json={
         "barcode": "6920001", "name": "低温奶", "spec": "200ml", "category": "低温奶", "cost": "2"})

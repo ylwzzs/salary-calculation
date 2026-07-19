@@ -7,14 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Python 依赖（利用层缓存）
+# Python 依赖（先装依赖，再拷代码，利用层缓存）
 COPY requirements.txt pyproject.toml ./
-COPY salary_engine/ ./salary_engine/
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 后端代码
+# 引擎代码 + 后端代码
+COPY salary_engine/ ./salary_engine/
 COPY backend/ ./backend/
+RUN pip install --no-cache-dir -e .
 
 # 静态资源（上传目录）
 RUN mkdir -p /app/uploads

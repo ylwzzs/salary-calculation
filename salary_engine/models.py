@@ -45,6 +45,7 @@ class SalesLine:
     is_online: bool          # 订单渠道 == '线上'
     cashier: str = ""
     salesperson: str = ""    # 营业员名称
+    sales_record_id: int = None  # 源 SalesRecord.id，物化反查用（T2.1）
 
 
 @dataclass(frozen=True)

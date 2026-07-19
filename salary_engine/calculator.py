@@ -32,7 +32,8 @@ class DetailRow:
     rate: Decimal
     amount: Decimal
     commission: Decimal
-    flag: str = ""   # "" | "退货未匹配"
+    tag: str = "有效计提"          # 有效计提/退货冲抵/退货未匹配/赠送剔除/不计提成/非乳品
+    sales_record_id: int = None
 
 
 @dataclass
@@ -163,7 +164,7 @@ def compute(sales_lines, products, stores, targets, rate_table,
         commission = r.amount * rate  # amount 为负 → 提成负
         details.append(DetailRow(r.store, r.sale_date, sp, r.barcode, r.product_name,
                                  tier, store_obj.store_class, bucket, rate, r.amount,
-                                 commission, flag="退货未匹配"))
+                                 commission, tag="退货未匹配"))
         comm_person[sp] += commission
         comm_store[r.store] += commission
         ps_commission[(sp, r.store)] += commission

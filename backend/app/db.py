@@ -157,6 +157,7 @@ class SalesRecord(Base):
     original_store = Column(String)  # 原始门店（调整前）
     original_date = Column(Date)    # 原始日期（调整前）
     transfer_reason = Column(String)  # 调整原因
+    extra = Column(JSON)  # 源 Excel 其余字段原样留底
     created_at = Column(DateTime, default=datetime.utcnow)
     __table_args__ = (
         UniqueConstraint("month", "receipt", "store", "sale_date", "barcode", "amount", name="uq_sales_record"),

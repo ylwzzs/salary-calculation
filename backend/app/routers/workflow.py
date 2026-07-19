@@ -358,7 +358,10 @@ def do_compute(month: str, _: User = Depends(current_user), db: Session = Depend
 
 @router.get("/months/{month}/results")
 def results(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
-    """初版：从 Result 表汇总。Task 6 会扩展（breakdown 排序等）。"""
+    """初版：从 Result 表汇总。Task 6 会扩展（breakdown 排序等）。
+    stale=True 表示输入已变更或月份未计算，前端应提示"数据已变更，请重新计算"。
+    写侧触发（输入变更 → results_stale=True）在 T5.1 落地。"""
+    m = db.get(Month, month)
     rows = db.query(Result).filter_by(month=month).all()
     salary = defaultdict(Decimal)
     breakdown = []
@@ -372,7 +375,8 @@ def results(month: str, _: User = Depends(current_user), db: Session = Depends(g
                           "commission": round(float(r.commission), 2)})
     salary = sorted(({"person": p, "commission": round(float(c), 2)} for p, c in salary.items()),
                     key=lambda x: x["commission"], reverse=True)
-    return {"salary": salary, "breakdown": breakdown}
+    stale = bool(m is not None and (m.results_stale or m.status != "computed"))
+    return {"salary": salary, "breakdown": breakdown, "stale": stale}
 
 
 def _sales_item(r) -> Dict[str, Any]:

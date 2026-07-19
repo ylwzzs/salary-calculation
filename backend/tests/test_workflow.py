@@ -96,6 +96,36 @@ def test_results_and_export(tmp_path, client):
     assert "spreadsheet" in ct or ct.startswith("application/vnd")
 
 
+def test_results_stale_flag(tmp_path, client, db_session):
+    """T4.3：/results 必须返回 stale 标志，让前端判断是否提示"数据已变更，请重新计算"。
+    - 已计算 & 未变更 → stale=False
+    - results_stale=True → stale=True（模拟 T5.1 的输入变更触发）
+    - 未计算的草稿月份（status=draft, results_stale=True）→ stale=True
+    """
+    from backend.app.db import Month
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)  # 建 2026-06 已计算月份
+
+    # 已计算 & 未变更 → stale=False
+    r = client.get("/months/2026-06/results", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["stale"] is False
+
+    # 模拟 T5.1 的输入变更触发：直接翻 results_stale（写侧逻辑在 T5.1 落地）
+    db_session.get(Month, "2026-06").results_stale = True
+    db_session.commit()
+    r2 = client.get("/months/2026-06/results", headers=h)
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["stale"] is True
+
+    # 未计算的草稿月份（默认 status=draft、results_stale=True）→ stale=True
+    client.post("/months", headers=h, json={"month": "2026-07"})
+    r3 = client.get("/months/2026-07/results", headers=h)
+    assert r3.status_code == 200, r3.text
+    assert r3.json()["stale"] is True
+
+
 def test_compute_materializes_result_and_detail(tmp_path, client, db_session):
     """T4.1：/compute 必须同事务物化 Result（聚合）+ DetailRow（逐行），Σ 提成相等，
     status=computed、results_stale=False、policy_version_id 仅首次锁定。"""

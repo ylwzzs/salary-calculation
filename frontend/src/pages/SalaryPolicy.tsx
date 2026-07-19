@@ -221,6 +221,26 @@ export default function SalaryPolicy() {
     });
   };
 
+  const updateMarginRule = (cat: string, tier: string, field: string, value: string) => {
+    setEditContent((prev) => {
+      if (!prev) return prev;
+      const numVal = value === "" ? null : Number(value);
+      return {
+        ...prev,
+        margin_rules: {
+          ...prev.margin_rules,
+          [cat]: {
+            ...prev.margin_rules[cat],
+            [tier]: {
+              ...(prev.margin_rules[cat]?.[tier] || {}),
+              [field]: numVal,
+            },
+          },
+        },
+      };
+    });
+  };
+
   const renderMarginRules = (marginRules: Record<string, any>) => {
     const categories = Object.keys(marginRules);
     if (categories.length === 0) {
@@ -251,6 +271,72 @@ export default function SalaryPolicy() {
                   {lowMin && lowMax ? `${lowMin}-${lowMax}%` : lowMin ? `>=${lowMin}%` : lowMax ? `<=${lowMax}%` : "-"}
                 </TableCell>
                 <TableCell>{specialMax ? `<=${specialMax}%` : "-"}</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    );
+  };
+
+  const renderMarginRulesEdit = (marginRules: Record<string, any>) => {
+    const categories = Object.keys(marginRules);
+    if (categories.length === 0) {
+      return <div className="text-sm text-zinc-400">暂无毛利率规则</div>;
+    }
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>商品分类</TableHead>
+            <TableHead>正价 最低毛利率(%)</TableHead>
+            <TableHead>低价 最低(%)</TableHead>
+            <TableHead>低价 最高(%)</TableHead>
+            <TableHead>特价 最高(%)</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {categories.map((cat) => {
+            const rules = marginRules[cat] || {};
+            return (
+              <TableRow key={cat}>
+                <TableCell className="font-medium">{cat}</TableCell>
+                <TableCell className="p-1">
+                  <Input
+                    type="number"
+                    value={rules.high?.min ?? ""}
+                    onChange={(e) => updateMarginRule(cat, "high", "min", e.target.value)}
+                    className="h-7 w-16 text-center"
+                    placeholder="17"
+                  />
+                </TableCell>
+                <TableCell className="p-1">
+                  <Input
+                    type="number"
+                    value={rules.low?.min ?? ""}
+                    onChange={(e) => updateMarginRule(cat, "low", "min", e.target.value)}
+                    className="h-7 w-16 text-center"
+                    placeholder="10"
+                  />
+                </TableCell>
+                <TableCell className="p-1">
+                  <Input
+                    type="number"
+                    value={rules.low?.max ?? ""}
+                    onChange={(e) => updateMarginRule(cat, "low", "max", e.target.value)}
+                    className="h-7 w-16 text-center"
+                    placeholder="17"
+                  />
+                </TableCell>
+                <TableCell className="p-1">
+                  <Input
+                    type="number"
+                    value={rules.special?.max ?? ""}
+                    onChange={(e) => updateMarginRule(cat, "special", "max", e.target.value)}
+                    className="h-7 w-16 text-center"
+                    placeholder="10"
+                  />
+                </TableCell>
               </TableRow>
             );
           })}
@@ -505,10 +591,13 @@ export default function SalaryPolicy() {
                 </div>
               </div>
 
-              {/* Margin Rules - Display Only */}
+              {/* Margin Rules - Editable */}
               <div className="mb-6">
-                <h3 className="text-sm font-medium text-zinc-700 mb-2">毛利率分类规则（只读）</h3>
-                {editContent?.margin_rules && renderMarginRules(editContent.margin_rules)}
+                <h3 className="text-sm font-medium text-zinc-700 mb-2">毛利率分类规则 (%)</h3>
+                <p className="text-xs text-zinc-400 mb-3">
+                  正价：毛利率 > 最低值；低价：最低 ≤ 毛利率 ≤ 最高；特价：毛利率 ≤ 最高值
+                </p>
+                {editContent?.margin_rules && renderMarginRulesEdit(editContent.margin_rules)}
               </div>
 
               {/* Commission Rates - Editable */}

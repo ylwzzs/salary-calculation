@@ -1,1 +1,8 @@
-Generic single-database configuration.
+# Alembic 迁移运行手册
+
+- 查看当前版本：`.venv/bin/alembic current`
+- 生成迁移：`.venv/bin/alembic revision --autogenerate -m "描述"`
+- 应用迁移：`.venv/bin/alembic upgrade head`
+- 回滚一步：`.venv/bin/alembic downgrade -1`
+
+注意：基线迁移为 pass-through。全新库先由应用 `backend.app.main.init_db()` 的 create_all 建表，再用 Alembic 管理增量 DDL。

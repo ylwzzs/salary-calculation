@@ -1,10 +1,13 @@
-"""Alembic 运行环境。
+"""Alembic 迁移环境。
 
-设计要点（与 docs/ARCHITECTURE.md 对齐）：
-- DB 连接始终复用应用配置 `backend.app.config.DB_URL`，避免在 alembic.ini 里硬编码路径导致漂移。
-- `target_metadata = Base.metadata`：autogenerate 以应用 ORM 模型为真值源。
-- 开启 `render_as_batch=True`：SQLite 对 ALTER 的支持有限，批量模式把单次 ALTER 包装成"重建表"，方便后续 P1 任务加列/改约束。
-- 仓库根通过 alembic.ini 的 `prepend_sys_path = .` 加入 sys.path，因此 `backend.*` 可直接 import。
+- target_metadata = Base.metadata（来自 backend.app.db），作为 autogenerate 的真值源。
+- 连接 URL 运行时从 backend.app.config.DB_URL 注入（alembic.ini 的 sqlalchemy.url 仅占位）。
+- 开启 render_as_batch=True 以兼容 SQLite 的 ALTER 限制（后续加列/改约束需要）。
+- 关键运行手册：
+  * 基线迁移为 pass-through（upgrade/downgrade 都是 pass），因为基表已存在。
+  * 全新库仍由 backend.app.main.init_db() 的 Base.metadata.create_all 建表。
+  * 不要在全新空库上只跑 `alembic upgrade head`：基表不存在会让后续 add_column 迁移失败。
+  * 正确顺序：先启动应用（create_all 建表），再 `alembic stamp head` 或 `alembic upgrade head`。
 """
 from logging.config import fileConfig
 

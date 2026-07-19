@@ -292,7 +292,11 @@ def _run_compute(db, month: str):
     m = _get_month(db, month)
     if not m.sales_file:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "尚未导入销售流水")
-    sales = _load_sales_lines(m.sales_file)
+    # 销售流水以 SalesRecord 为真值源（C2：调班/编辑后立即对计算可见）
+    from backend.app.services.engine_bridge import sales_lines_from_db
+    sales = sales_lines_from_db(db, month)
+    if not sales:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "尚未导入销售流水")
     gifts = load_gift_keys_xlsx(m.gifts_file) if m.gifts_file else set()
     # 使用锁定的工资策略版本，若无则用当前激活版本（ADR-009：策略存百分数，边界 ÷100）
     try:

@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  backend:
+    image: registry-crs-xinan1.ctyun.cn/salary_calculation/salary-backend:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - salary-data:/data
+      - /opt/salary/uploads:/app/uploads
+    environment:
+      - SALARY_DB=/data/salary.db
+      - SALARY_TOKEN_SECRET=${SALARY_TOKEN_SECRET}
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    image: registry-crs-xinan1.ctyun.cn/salary_calculation/salary-frontend:latest
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  salary-data:

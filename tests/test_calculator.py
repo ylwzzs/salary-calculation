@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from salary_engine.calculator import compute
 from salary_engine.rates import seed_rate_table
-from salary_engine.models import SalesLine, Store
+from salary_engine.models import Product, RateTable, SalesLine, Store
 
 
 def test_basic_commission_lowtemp_highmargin_classA_full(stores, products):
@@ -123,7 +123,6 @@ def _sl(receipt, store, d, amount, sp="高睿", barcode="B1"):
 def test_c3_duty_days_count_zero_sales_day():
     # C3：当班天数应取自当班表（含零销售当班日），而非『有销售的天数』。
     # 本用例为审计反例：6/2 当班但零销售 → 必须计入目标，否则达成率虚高。
-    from salary_engine.models import Product, Store, RateTable
     products = {"B1": Product("B1", "奶", "", "常温奶", Decimal(5), False)}
     stores = {"福景店": Store("福景店", "1组", "A", "")}
     targets = {"福景店": Decimal(3000)}
@@ -139,3 +138,26 @@ def test_c3_duty_days_count_zero_sales_day():
     # 正确：目标=3000/30*2=200，达成=100/200=0.5 → LT_70
     assert bd["target"] == Decimal(200), f"target={bd['target']}"
     assert bd["bucket"] == "LT_70", f"bucket={bd['bucket']}"
+
+
+def test_per_line_detail_rows_sum_to_total():
+    products = {"B1": Product("B1", "奶", "", "常温奶", Decimal(5), False)}
+    stores = {"S": Store("S", "1组", "A", "")}
+    targets = {"S": Decimal(1000)}
+    rt = RateTable(version=1, effective_from=date(2026, 6, 1),
+                   rates={("A", "GE_100", "常温高毛"): Decimal("0.13")})
+    sales = [
+        _sl("R1", "S", date(2026, 6, 1), 60),
+        _sl("R1", "S", date(2026, 6, 1), 40),
+        SalesLine(receipt="R2", src_order="R1", store="S", sale_date=date(2026, 6, 1),
+                  barcode="B1", product_name="奶", qty=1, amount=Decimal(-10),
+                  unit_price=Decimal(10), is_return=True, is_online=False,
+                  cashier="", salesperson="高睿"),
+    ]
+    duty = {("S", date(2026, 6, 1)): "高睿"}
+    res = compute(sales, products, stores, targets, rt, "2026-06", 30, duty_override=duty)
+    # 逐行：60×.13 + 40×.13 + (-10)×.13 = 11.70
+    assert sum((d.commission for d in res.details), Decimal(0)) == Decimal("11.70")
+    assert res.commission_by_person["高睿"] == Decimal("11.70")
+    # 匹配退货行带 退货冲抵 标签
+    assert any(d.tag == "退货冲抵" and d.amount == Decimal(-10) for d in res.details)

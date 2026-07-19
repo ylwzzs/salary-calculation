@@ -127,14 +127,11 @@ def compute(sales_lines, products, stores, targets, rate_table,
     comm_store = defaultdict(Decimal)
     ps_commission = defaultdict(Decimal)  # (person, store) -> 提成
 
-    # 正常销售组（扣精确退货后的净额）
+    # 正常销售组：逐行产出 DetailRow（销售 + 精确匹配退货冲抵），Σ = 旧组净额×rate
     for g in groups.values():
         if not g["sales"]:
             continue
-        net = group_net(g)
-        if net == 0:
-            continue
-        s0 = g["sales"][0]  # 代表行（同组门店/日期/商品一致）
+        s0 = g["sales"][0]
         product = products[s0.barcode]
         if product.cost is None:
             warnings.append(f"缺成本: {s0.barcode} {s0.product_name}")
@@ -148,12 +145,26 @@ def compute(sales_lines, products, stores, targets, rate_table,
         sp = _resolve_duty(duty, s0.store, s0.sale_date, s0.salesperson)
         bucket = ps_bucket.get((sp, s0.store), "LT_70")
         rate = lookup_rate(rate_table, store_obj.store_class, bucket, tier)
-        commission = net * rate
-        details.append(DetailRow(s0.store, s0.sale_date, sp, s0.barcode, s0.product_name,
-                                 tier, store_obj.store_class, bucket, rate, net, commission))
-        comm_person[sp] += commission
-        comm_store[s0.store] += commission
-        ps_commission[(sp, s0.store)] += commission
+        # 逐行：销售
+        for s in g["sales"]:
+            commission = s.amount * rate
+            details.append(DetailRow(s.store, s.sale_date, sp, s.barcode, s.product_name,
+                                     tier, store_obj.store_class, bucket, rate, s.amount,
+                                     commission, tag="有效计提",
+                                     sales_record_id=getattr(s, "sales_record_id", None)))
+            comm_person[sp] += commission
+            comm_store[s.store] += commission
+            ps_commission[(sp, s.store)] += commission
+        # 逐行：精确匹配退货（冲抵）
+        for r in g["returns"]:
+            commission = r.amount * rate
+            details.append(DetailRow(r.store, r.sale_date, sp, r.barcode, r.product_name,
+                                     tier, store_obj.store_class, bucket, rate, r.amount,
+                                     commission, tag="退货冲抵",
+                                     sales_record_id=getattr(r, "sales_record_id", None)))
+            comm_person[sp] += commission
+            comm_store[r.store] += commission
+            ps_commission[(sp, r.store)] += commission
 
     # 不匹配退货：算到退货当日，按『该人×该店』档比例算负数，标黄
     for r in unmatched_returns:

@@ -42,6 +42,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure Docker Hub mirror
+        uses: docker/setup-docker-action@v4
+        with:
+          daemon-config: |
+            {
+              "registry-mirrors": ["https://caj9ik14016wep.xuanyuan.run"]
+            }
+
       - name: Login to 天翼云镜像仓库
         uses: docker/login-action@v3
         with:
@@ -71,6 +79,14 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure Docker Hub mirror
+        uses: docker/setup-docker-action@v4
+        with:
+          daemon-config: |
+            {
+              "registry-mirrors": ["https://caj9ik14016wep.xuanyuan.run"]
+            }
 
       - name: Login to 天翼云镜像仓库
         uses: docker/login-action@v3

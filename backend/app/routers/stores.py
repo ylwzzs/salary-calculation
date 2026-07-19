@@ -1,4 +1,6 @@
+from typing import Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.app.auth import current_user
@@ -24,6 +26,29 @@ def upsert_store(name: str, body: StoreUpsert,
         db.add(s)
     for f in ("group", "store_class", "supervisor", "exclude_assessment"):
         setattr(s, f, getattr(body, f))
+    db.commit()
+    return s
+
+
+class StorePatch(BaseModel):
+    group: Optional[Any] = None
+    store_class: Optional[Any] = None
+    supervisor: Optional[Any] = None
+    exclude_assessment: Optional[bool] = None
+
+
+@router.patch("/{name}", response_model=StoreOut)
+def patch_store(name: str, body: StorePatch,
+                _: User = Depends(current_user), db: Session = Depends(get_db)):
+    """部分更新门店字段，只更新传入的字段"""
+    s = db.get(Store, name)
+    if s is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "门店不存在")
+    # 获取请求体中的字段（区分未传入和传入null）
+    update_data = body.dict(exclude_unset=True)
+    for f, val in update_data.items():
+        if f in ("group", "store_class", "supervisor", "exclude_assessment"):
+            setattr(s, f, val)
     db.commit()
     return s
 

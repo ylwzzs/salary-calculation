@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { workflowApi, dutyTransferApi, type DutyGrid as DutyGridType } from "../../api";
+import { workflowApi, dutyTransferApi, monthStepApi, type DutyGrid as DutyGridType } from "../../api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
-export default function DutyStep({ month }: { month: string }) {
+export default function DutyStep({ month, onNext }: { month: string; onNext?: () => void }) {
   const [grid, setGrid] = useState<DutyGridType>({});
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -14,15 +14,17 @@ export default function DutyStep({ month }: { month: string }) {
   const infer = async () => {
     setLoading(true);
     try {
-      setGrid(await workflowApi.inferDuty(month));
+      const data = await workflowApi.inferDuty(month);
+      setGrid(data);
       setEdit({});
+      toast.success(`推断完成，共 ${Object.keys(data).length} 家门店`);
+    } catch {
+      toast.error("推断当班失败");
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => {
-    infer();
-  }, []);
+  useEffect(() => { infer(); }, [month]);
 
   const dates = useMemo(() => {
     const s = new Set<string>();
@@ -53,7 +55,9 @@ export default function DutyStep({ month }: { month: string }) {
     setConfirming(true);
     try {
       await workflowApi.setDuty(month, items);
+      await monthStepApi.update(month, "duty", { duty: true }).catch(() => {});
       toast.success(`已确认 ${items.length} 条当班`);
+      onNext?.();
     } catch {
       toast.error("确认失败");
     } finally {
@@ -107,16 +111,16 @@ export default function DutyStep({ month }: { month: string }) {
       </div>
 
       <div className="rounded-lg border border-zinc-200 bg-white overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="border-b border-zinc-200 bg-zinc-50/50">
-              <th className="text-left px-3 py-2.5 font-medium text-zinc-500 sticky left-0 bg-zinc-50/50 z-10 min-w-[100px]">
+            <tr className="bg-zinc-50/50">
+              <th className="text-left px-3 py-2.5 font-medium text-zinc-500 sticky left-0 bg-zinc-50/50 z-10 min-w-[100px] border border-zinc-200">
                 门店
               </th>
               {dates.map((d) => (
                 <th
                   key={d}
-                  className="text-center px-2 py-2.5 font-medium text-zinc-500 whitespace-nowrap min-w-[60px]"
+                  className="text-center px-2 py-2.5 font-medium text-zinc-500 whitespace-nowrap border border-zinc-200"
                 >
                   {d.slice(5)}
                 </th>
@@ -125,18 +129,17 @@ export default function DutyStep({ month }: { month: string }) {
           </thead>
           <tbody>
             {Object.keys(grid).map((store) => (
-              <tr key={store} className="border-b border-zinc-100 last:border-0">
-                <td className="px-3 py-2 font-medium text-zinc-700 sticky left-0 bg-white z-10">
+              <tr key={store}>
+                <td className="px-3 py-2 font-medium text-zinc-700 sticky left-0 bg-white z-10 border border-zinc-200 whitespace-nowrap">
                   {store}
                 </td>
                 {dates.map((date) => {
                   const v = grid[store]?.[date];
-                  const k = `${store}|${date}`;
                   const cur = cell(store, date);
                   return (
                     <td
                       key={date}
-                      className={`text-center px-2 py-1.5 ${
+                      className={`text-center px-2 py-1.5 border border-zinc-200 whitespace-nowrap ${
                         Array.isArray(v) ? "bg-red-50" : ""
                       }`}
                       onDragOver={(e) => {

@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { workflowApi } from "../../api";
+import { useEffect, useState } from "react";
+import { workflowApi, workflowApiExtended, anomalyApi } from "../../api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Download, Zap, Users, DollarSign, BarChart3 } from "lucide-react";
-import { Block, Callout } from "@/components/Block";
+import { Zap, Download, Users, DollarSign, CheckCircle2, AlertTriangle } from "lucide-react";
 import ResultTable from "../../components/ResultTable";
+import AnomalyPanel from "./AnomalyPanel";
 
 interface Breakdown {
   person: string;
@@ -22,17 +21,6 @@ interface ResultData {
   breakdown: Breakdown[];
 }
 
-const BUCKETS = [
-  { key: "GE_100", label: "≥100%", color: "bg-emerald-500" },
-  { key: "90_100", label: "90~99%", color: "bg-blue-500" },
-  { key: "80_90", label: "80~89%", color: "bg-violet-500" },
-  { key: "70_80", label: "70~79%", color: "bg-amber-500" },
-  { key: "LT_70", label: "<70%", color: "bg-zinc-400" },
-];
-const BUCKET_LABELS: Record<string, string> = Object.fromEntries(BUCKETS.map((b) => [b.key, b.label]));
-const BUCKET_COLORS: Record<string, string> = Object.fromEntries(BUCKETS.map((b) => [b.key, b.color]));
-const MEDAL = ["bg-amber-500", "bg-zinc-400", "bg-amber-700"];
-
 export default function ResultsStep({
   month,
   onComputed,
@@ -42,34 +30,70 @@ export default function ResultsStep({
 }) {
   const [data, setData] = useState<ResultData | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [pendingAnomalies, setPendingAnomalies] = useState(0);
+  const [phase, setPhase] = useState<"check" | "compute" | "result">("check");
 
-  const load = async () => {
+  const loadResults = async () => {
     try {
-      setData(await workflowApi.getResults(month));
+      const r = await workflowApi.getResults(month);
+      if (r && r.salary && r.salary.length > 0) {
+        setData(r);
+        setPhase("result");
+      } else {
+        setPhase("compute");
+      }
     } catch {
-      setData(null);
+      setPhase("compute");
     }
   };
+
+  const refreshAnomalies = async () => {
+    try {
+      await workflowApiExtended.checkAnomalies(month);
+      const anomalies = await anomalyApi.list(month, "pending");
+      setPendingAnomalies(anomalies.length);
+      return anomalies.length;
+    } catch {
+      return 0;
+    }
+  };
+
   useEffect(() => {
-    load();
-    // 检查待处理异常
-    import("../../api").then(({ anomalyApi }) =>
-      anomalyApi.list(month, "pending").then((a) => setPendingAnomalies(a.length)).catch(() => {})
-    );
+    const init = async () => {
+      const count = await refreshAnomalies();
+      if (count === 0) {
+        await loadResults();
+      } else {
+        setPhase("check");
+      }
+    };
+    init();
   }, [month]);
 
-  const compute = async () => {
-    if (pendingAnomalies > 0) {
-      toast.error(`有 ${pendingAnomalies} 个异常未处理，请先处理`);
-      return;
+  const handleAnomalyResolved = async () => {
+    const count = await refreshAnomalies();
+    if (count === 0) {
+      setPhase("compute");
     }
+  };
+
+  const compute = async () => {
     setBusy(true);
     try {
+      // 再次检查异常
+      const count = await refreshAnomalies();
+      if (count > 0) {
+        toast.error(`发现 ${count} 个异常，请先处理`);
+        setPhase("check");
+        setBusy(false);
+        return;
+      }
+
       const r = await workflowApi.compute(month);
       toast.success(`计算完成：${r.details} 条，总额 ¥${r.total.toFixed(2)}`);
       onComputed?.();
-      await load();
+      await loadResults();
     } catch (e: unknown) {
       const msg = e as {
         response?: { data?: { detail?: string } };
@@ -82,32 +106,77 @@ export default function ResultsStep({
   };
 
   const total = data ? data.salary.reduce((s, x) => s + x.commission, 0) : 0;
-  const has = !!data && data.salary.length > 0;
 
   return (
-    <>
-      <div className="flex items-center gap-2 mb-4">
-        <Button onClick={compute} disabled={busy}>
-          <Zap className="w-4 h-4 mr-1.5" />
-          {busy ? "计算中..." : "计算提成"}
-        </Button>
-        <Button variant="outline" onClick={() => workflowApi.downloadExport(month)}>
-          <Download className="w-4 h-4 mr-1.5" />
-          导出 Excel
-        </Button>
-        {pendingAnomalies > 0 && (
-          <Badge className="bg-amber-100 text-amber-700 border-amber-200">
-            {pendingAnomalies} 个异常待处理
-          </Badge>
-        )}
-      </div>
+    <div className="space-y-4">
+      {/* 阶段1: 异常排查 */}
+      {phase === "check" && (
+        <>
+          <div className="flex items-center gap-2 text-amber-700 bg-amber-50 rounded-lg px-4 py-3">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="font-medium">异常排查</span>
+            <span className="text-sm">请处理以下异常后再计算</span>
+          </div>
+          <AnomalyPanel month={month} onResolved={handleAnomalyResolved} />
+        </>
+      )}
 
-      {!has ? (
-        <Callout variant="info" icon={<BarChart3 className="w-4 h-4" />}>
-          尚未计算，点击上方「计算提成」生成结果
-        </Callout>
-      ) : (
-        <div className="space-y-4">
+      {/* 阶段2: 可以计算 */}
+      {phase === "compute" && (
+        <>
+          <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 rounded-lg px-4 py-3">
+            <CheckCircle2 className="w-5 h-5" />
+            <span className="font-medium">异常已清除</span>
+            <span className="text-sm">点击下方按钮开始计算</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={compute} disabled={busy}>
+              <Zap className="w-4 h-4 mr-1.5" />
+              {busy ? "计算中..." : "计算提成"}
+            </Button>
+            <Button variant="outline" onClick={async () => {
+              const count = await refreshAnomalies();
+              if (count > 0) setPhase("check");
+              else toast.info("无异常");
+            }}>
+              重新检查异常
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* 阶段3: 计算结果 */}
+      {phase === "result" && data && (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button onClick={compute} disabled={busy} variant="outline" size="sm">
+                <Zap className="w-3.5 h-3.5 mr-1" />
+                重新计算
+              </Button>
+              <Button variant="outline" size="sm" disabled={exporting} onClick={async () => {
+                setExporting(true);
+                try {
+                  await workflowApi.downloadExport(month);
+                  toast.success("导出成功");
+                } catch {
+                  toast.error("导出失败");
+                } finally {
+                  setExporting(false);
+                }
+              }}>
+                <Download className="w-3.5 h-3.5 mr-1" />
+                {exporting ? "导出中..." : "导出 Excel"}
+              </Button>
+            </div>
+            {pendingAnomalies > 0 && (
+              <Badge className="bg-amber-100 text-amber-700 border-amber-200 cursor-pointer" onClick={() => setPhase("check")}>
+                {pendingAnomalies} 个异常待处理
+              </Badge>
+            )}
+          </div>
+
+          {/* KPI卡片 */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg border border-zinc-200 bg-white p-4 flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-emerald-50 text-emerald-600">
@@ -115,9 +184,7 @@ export default function ResultsStep({
               </div>
               <div>
                 <p className="text-xs text-zinc-400">提成总额</p>
-                <p className="text-xl font-semibold text-zinc-900 tnum">
-                  ¥{total.toFixed(2)}
-                </p>
+                <p className="text-xl font-semibold text-zinc-900 tnum">¥{total.toFixed(2)}</p>
               </div>
             </div>
             <div className="rounded-lg border border-zinc-200 bg-white p-4 flex items-center gap-3">
@@ -126,9 +193,7 @@ export default function ResultsStep({
               </div>
               <div>
                 <p className="text-xs text-zinc-400">参与营业员</p>
-                <p className="text-xl font-semibold text-zinc-900 tnum">
-                  {data!.salary.length}
-                </p>
+                <p className="text-xl font-semibold text-zinc-900 tnum">{data.salary.length}</p>
               </div>
             </div>
             <div className="rounded-lg border border-zinc-200 bg-white p-4 flex items-center gap-3">
@@ -137,17 +202,15 @@ export default function ResultsStep({
               </div>
               <div>
                 <p className="text-xs text-zinc-400">人均提成</p>
-                <p className="text-xl font-semibold text-zinc-900 tnum">
-                  ¥{(total / (data!.salary.length || 1)).toFixed(2)}
-                </p>
+                <p className="text-xl font-semibold text-zinc-900 tnum">¥{(total / (data.salary.length || 1)).toFixed(2)}</p>
               </div>
             </div>
           </div>
 
           {/* 下钻结果表格 */}
-          <ResultTable month={month} data={data!} />
-        </div>
+          <ResultTable month={month} data={data} />
+        </>
       )}
-    </>
+    </div>
   );
 }

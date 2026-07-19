@@ -1,4 +1,6 @@
+from typing import Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.app.auth import current_user
@@ -24,6 +26,30 @@ def upsert_product(barcode: str, body: ProductUpsert,
         db.add(p)
     for f in ("name", "spec", "category", "cost", "exclude_commission"):
         setattr(p, f, getattr(body, f))
+    db.commit()
+    return p
+
+
+class ProductPatch(BaseModel):
+    name: Optional[Any] = None
+    spec: Optional[Any] = None
+    category: Optional[Any] = None
+    cost: Optional[Any] = None
+    exclude_commission: Optional[bool] = None
+
+
+@router.patch("/{barcode}", response_model=ProductOut)
+def patch_product(barcode: str, body: ProductPatch,
+                  _: User = Depends(current_user), db: Session = Depends(get_db)):
+    """部分更新商品字段，只更新传入的字段"""
+    p = db.get(Product, barcode)
+    if p is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "商品不存在")
+    # 获取请求体中的字段（区分未传入和传入null）
+    update_data = body.dict(exclude_unset=True)
+    for f, val in update_data.items():
+        if f in ("name", "spec", "category", "cost", "exclude_commission"):
+            setattr(p, f, val)
     db.commit()
     return p
 

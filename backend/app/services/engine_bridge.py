@@ -13,8 +13,14 @@ def days_in_month(month: str) -> int:
     return calendar.monthrange(y, m)[1]
 
 
-def rates_from_db(db) -> RateTable:
-    rv = db.query(RateVersion).filter_by(is_current=True).first()
+def rates_from_db(db, rate_version_id: int = None) -> RateTable:
+    """加载费率表。指定rate_version_id则用锁定版本，否则用当前版本。"""
+    if rate_version_id:
+        rv = db.get(RateVersion, rate_version_id)
+    else:
+        rv = db.query(RateVersion).filter_by(is_current=True).first()
+    if not rv:
+        raise ValueError("费率表不存在")
     rates = {}
     for cls, by_bucket in (rv.rates or {}).items():
         for bucket, by_tier in by_bucket.items():

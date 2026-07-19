@@ -1,4 +1,5 @@
 """主数据导入服务：复用 salary_engine.importer 解析后 upsert 进 DB。"""
+from typing import Optional
 from sqlalchemy.orm import Session
 from backend.app.db import Product, Store, MonthlyTarget
 
@@ -17,7 +18,7 @@ def upsert_products(db: Session, products: dict) -> int:
     return n
 
 
-def upsert_stores(db: Session, stores: dict, targets: dict, month: str | None = None) -> int:
+def upsert_stores(db: Session, stores: dict, targets: dict, month: Optional[str] = None) -> int:
     """stores: {name: Store}; targets: {name: Decimal}。targets 仅在 month 给出时写入。"""
     n = 0
     for name, s in stores.items():

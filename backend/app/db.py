@@ -123,6 +123,50 @@ class Result(Base):
     __table_args__ = (UniqueConstraint("month", "person", "store", name="uq_result"),)
 
 
+class SalesRecord(Base):
+    """销售明细记录（持久化）"""
+    __tablename__ = "sales_records"
+    id = Column(Integer, primary_key=True)
+    month = Column(String, nullable=False, index=True)  # YYYY-MM
+    receipt = Column(String, nullable=False)  # 小票单号
+    src_order = Column(String)  # 源单号（退货时指向原销售小票）
+    store = Column(String, nullable=False, index=True)
+    sale_date = Column(Date, nullable=False, index=True)
+    barcode = Column(String, nullable=False)
+    product_name = Column(String)
+    qty = Column(Numeric, nullable=False)
+    amount = Column(Numeric, nullable=False)
+    unit_price = Column(Numeric, nullable=False)
+    salesperson = Column(String, default="", index=True)
+    cashier = Column(String, default="")  # 收银员
+    is_return = Column(Boolean, default=False)
+    is_online = Column(Boolean, default=False)
+    # 标签：有效/退款/赠送/不计提成
+    tag = Column(String(20), nullable=False, default="有效", index=True)
+    # 调整相关
+    original_store = Column(String)  # 原始门店（调整前）
+    original_date = Column(Date)    # 原始日期（调整前）
+    transfer_reason = Column(String)  # 调整原因
+    created_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (
+        UniqueConstraint("month", "receipt", "store", "sale_date", "barcode", "amount", name="uq_sales_record"),
+    )
+
+
+class TransferRecord(Base):
+    """业绩调整记录"""
+    __tablename__ = "transfer_records"
+    id = Column(Integer, primary_key=True)
+    month = Column(String, nullable=False, index=True)
+    salesperson = Column(String, nullable=False)
+    from_store = Column(String, nullable=False)
+    from_date = Column(Date, nullable=False)
+    to_store = Column(String, nullable=False)
+    to_date = Column(Date, nullable=False)
+    reason = Column(String)  # 调整原因
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Anomaly(Base):
     """计算预检异常记录"""
     __tablename__ = "anomalies"

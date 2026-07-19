@@ -11,6 +11,8 @@ import { toast } from "sonner";
 
 interface TargetRow {
   store: string;
+  group: string;
+  store_class: string;
   target: number;
   exists: boolean;
   id?: number;
@@ -57,6 +59,8 @@ export default function Targets() {
       const targetMap = new Map(targets.map(t => [t.store, t]));
       const targetRows = activeStores.map(store => ({
         store: store.name,
+        group: store.group || "-",
+        store_class: store.store_class || "-",
         target: targetMap.get(store.name)?.target || 0,
         exists: targetMap.has(store.name),
         id: targetMap.get(store.name)?.id
@@ -216,6 +220,8 @@ export default function Targets() {
                 <TableRow>
                   <TableHead className="w-16">#</TableHead>
                   <TableHead>门店</TableHead>
+                  <TableHead className="w-20">组别</TableHead>
+                  <TableHead className="w-20">类别</TableHead>
                   <TableHead className="text-right w-48">月度目标（元）</TableHead>
                   <TableHead className="w-20">状态</TableHead>
                 </TableRow>
@@ -225,6 +231,8 @@ export default function Targets() {
                   <TableRow key={r.store}>
                     <TableCell className="text-zinc-400">{i + 1}</TableCell>
                     <TableCell className="font-medium">{r.store}</TableCell>
+                    <TableCell className="text-zinc-500">{r.group}</TableCell>
+                    <TableCell className="text-zinc-500">{r.store_class}</TableCell>
                     <TableCell className="text-right">
                       {editMode ? (
                         <Input

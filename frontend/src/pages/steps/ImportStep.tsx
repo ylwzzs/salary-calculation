@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { workflowApi, salaryPolicyApi, monthStepApi } from "../../api";
+import { workflowApi, salaryPolicyApi, monthStepApi, monthsApi } from "../../api";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Upload } from "lucide-react";
@@ -66,6 +66,11 @@ export default function ImportStep({ month }: { month: string }) {
   } | null>(null);
 
   useEffect(() => {
+    // 加载月份信息，恢复已上传状态
+    monthsApi.get(month).then((m) => {
+      if (m.sales_file) setSales(true);
+      if (m.gifts_file) setGifts(true);
+    }).catch(() => {});
     // 加载薪酬制度信息
     salaryPolicyApi
       .getCurrent()
@@ -73,7 +78,7 @@ export default function ImportStep({ month }: { month: string }) {
         setPolicyInfo({ version: p.version, effective_from: p.effective_from })
       )
       .catch(() => {});
-  }, []);
+  }, [month]);
 
   const upload = (kind: "sales" | "gifts", file: File) => {
     setUploading(kind);
@@ -82,10 +87,16 @@ export default function ImportStep({ month }: { month: string }) {
       file
     )
       .then(() => {
+        const newSales = kind === "sales" ? true : sales;
+        const newGifts = kind === "gifts" ? true : gifts;
         kind === "sales" ? setSales(true) : setGifts(true);
         toast.success(
           `${kind === "sales" ? "销售流水" : "让利明细"}上传成功`
         );
+        // 两个文件都上传后标记步骤完成
+        if (newSales && newGifts) {
+          monthStepApi.update(month, "import", { import: true }).catch(() => {});
+        }
       })
       .catch(() => toast.error("上传失败，请检查文件格式"))
       .finally(() => setUploading(null));

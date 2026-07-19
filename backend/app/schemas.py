@@ -1,14 +1,15 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, field_validator
 
 
 class ProductOut(BaseModel):
     barcode: str
-    name: str | None = None
-    spec: str | None = None
-    category: str | None = None
-    cost: float | None = None
+    name: Optional[str] = None
+    spec: Optional[str] = None
+    category: Optional[str] = None
+    cost: Optional[float] = None
     exclude_commission: bool = False  # 不计入提成
 
     class Config:
@@ -17,18 +18,18 @@ class ProductOut(BaseModel):
 
 class ProductUpsert(BaseModel):
     barcode: str
-    name: str | None = None
-    spec: str | None = None
-    category: str | None = None
-    cost: Decimal | None = None
+    name: Optional[str] = None
+    spec: Optional[str] = None
+    category: Optional[str] = None
+    cost: Optional[Decimal] = None
     exclude_commission: bool = False
 
 
 class StoreOut(BaseModel):
     name: str
-    group: str | None = None
-    store_class: str | None = None
-    supervisor: str | None = None
+    group: Optional[str] = None
+    store_class: Optional[str] = None
+    supervisor: Optional[str] = None
     exclude_assessment: bool = False  # 不参与考核
 
     class Config:
@@ -37,9 +38,9 @@ class StoreOut(BaseModel):
 
 class StoreUpsert(BaseModel):
     name: str
-    group: str | None = None
-    store_class: str | None = None
-    supervisor: str | None = None
+    group: Optional[str] = None
+    store_class: Optional[str] = None
+    supervisor: Optional[str] = None
     exclude_assessment: bool = False
 
 
@@ -70,17 +71,17 @@ class TargetItem(BaseModel):
 
 
 class TargetBatch(BaseModel):
-    items: list[TargetItem]
+    items: List[TargetItem]
 
 
 class MonthOut(BaseModel):
     month: str
-    status: str | None = None
-    sales_file: str | None = None
-    gifts_file: str | None = None
-    rate_version_id: int | None = None
-    current_step: str | None = None
-    step_data: dict | None = None
+    status: Optional[str] = None
+    sales_file: Optional[str] = None
+    gifts_file: Optional[str] = None
+    rate_version_id: Optional[int] = None
+    current_step: Optional[str] = None
+    step_data: Optional[dict] = None
 
     class Config:
         from_attributes = True
@@ -88,10 +89,7 @@ class MonthOut(BaseModel):
 
 class MonthCreate(BaseModel):
     month: str
-    copy_from: str | None = None
-
-
-from typing import Dict, Any
+    copy_from: Optional[str] = None
 
 
 class SalaryPolicyContent(BaseModel):
@@ -104,10 +102,10 @@ class SalaryPolicyOut(BaseModel):
     version: int
     effective_from: date
     is_current: bool
-    created_at: str | None = None
-    created_by: str | None = None
+    created_at: Optional[str] = None
+    created_by: Optional[str] = None
     content: SalaryPolicyContent
-    note: str | None = None
+    note: Optional[str] = None
 
     @field_validator("created_at", mode="before")
     @classmethod
@@ -122,7 +120,7 @@ class SalaryPolicyOut(BaseModel):
 
 class SalaryPolicyCreate(BaseModel):
     effective_from: date
-    note: str | None = None
+    note: Optional[str] = None
     content: SalaryPolicyContent
 
 
@@ -131,9 +129,9 @@ class SalaryPolicySummary(BaseModel):
     version: int
     effective_from: date
     is_current: bool
-    created_by: str | None = None
-    note: str | None = None
-    used_by_months: list[str] = []
+    created_by: Optional[str] = None
+    note: Optional[str] = None
+    used_by_months: List[str] = []
 
     class Config:
         from_attributes = True
@@ -143,13 +141,13 @@ class AnomalyOut(BaseModel):
     id: int
     month: str
     anomaly_type: str
-    entity_type: str | None = None
-    entity_id: str | None = None
+    entity_type: Optional[str] = None
+    entity_id: Optional[str] = None
     description: str
     status: str
-    resolution: str | None = None
-    created_at: str | None = None
-    resolved_at: str | None = None
+    resolution: Optional[str] = None
+    created_at: Optional[str] = None
+    resolved_at: Optional[str] = None
 
     @field_validator("created_at", "resolved_at", mode="before")
     @classmethod
@@ -163,4 +161,4 @@ class AnomalyOut(BaseModel):
 
 
 class AnomalyResolve(BaseModel):
-    resolution: str | None = None
+    resolution: Optional[str] = None

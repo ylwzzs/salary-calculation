@@ -55,9 +55,10 @@ def update_step(
     if step:
         m.current_step = step
     if step_data:
-        if not m.step_data:
-            m.step_data = {}
-        m.step_data.update(step_data)
+        # 合并step_data，需要重新赋值以触发SQLAlchemy更新
+        current = dict(m.step_data or {})
+        current.update(step_data)
+        m.step_data = current
 
     db.commit()
     return {"month": month, "current_step": m.current_step, "step_data": m.step_data}

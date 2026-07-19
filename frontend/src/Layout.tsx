@@ -25,7 +25,7 @@ export default function Layout() {
 
   const title = pathname.startsWith("/months/")
     ? `月度工作台`
-    : titles[pathname] || "牛奶提成";
+    : titles[pathname] || "来思尔薪酬管理系统";
 
   return (
     <div className="flex h-screen bg-zinc-50 text-zinc-900 text-[15px] leading-relaxed font-sans">
@@ -33,13 +33,9 @@ export default function Layout() {
       <aside className="w-[240px] shrink-0 bg-white border-r border-zinc-200 flex flex-col">
         <div className="px-4 py-4 border-b border-zinc-100">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-md bg-zinc-900 flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="white" aria-hidden="true">
-                <path d="M9 2h6l1.5 4H7.5L9 2Z"/><path d="M7.5 6h9l-1 2.2a4 4 0 0 0-.4 1.7V20a2 2 0 0 1-2 2h-2.2a2 2 0 0 1-2-2V9.9a4 4 0 0 0-.4-1.7L7.5 6Z"/><rect x="8.5" y="12" width="7" height="3.4" rx="0.6" fill="#2563EB"/>
-              </svg>
-            </div>
+            <img src="/logo.png" alt="" className="w-7 h-7 object-contain rounded-md" />
             <div>
-              <p className="text-[13px] font-semibold text-zinc-900 leading-tight">牛奶业绩提成</p>
+              <p className="text-[13px] font-semibold text-zinc-900 leading-tight">来思尔薪酬管理系统</p>
               <p className="text-[11px] text-zinc-400 leading-tight">workspace</p>
             </div>
           </div>

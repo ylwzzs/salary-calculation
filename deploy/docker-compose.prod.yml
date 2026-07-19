@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   backend:
-    image: registry-crs-xinan1.ctyun.cn/salary_calculation/salary-backend:latest
+    image: registry-crs-xinan1.ctyun.cn/hookflow/salary_calculation/salary-backend:latest
     ports:
       - "8000:8000"
     volumes:
@@ -19,7 +19,7 @@ services:
       retries: 3
 
   frontend:
-    image: registry-crs-xinan1.ctyun.cn/salary_calculation/salary-frontend:latest
+    image: registry-crs-xinan1.ctyun.cn/hookflow/salary_calculation/salary-frontend:latest
     ports:
       - "80:80"
     depends_on:

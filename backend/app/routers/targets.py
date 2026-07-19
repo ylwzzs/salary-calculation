@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from decimal import Decimal
 
 from backend.app.auth import current_user
-from backend.app.db import get_db, MonthlyTarget, Store, User
+from backend.app.db import get_db, MonthlyTarget, Store, User, Month
 from backend.app.schemas import TargetBatch
 
 router = APIRouter(tags=["targets"])
@@ -132,5 +132,8 @@ def set_targets(month: str, body: TargetBatch,
             db.add(row)
         else:
             row.target = it.target
+    m = db.get(Month, month)
+    if m is not None:
+        m.results_stale = True
     db.commit()
     return {"saved": len(body.items)}

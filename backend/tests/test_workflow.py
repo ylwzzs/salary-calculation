@@ -207,6 +207,70 @@ def test_tier_detail_does_not_recompute(tmp_path, client, monkeypatch):
     assert it["barcode"] == "6920001"
 
 
+def test_input_changes_mark_month_stale(client, db_session, tmp_path):
+    """T5.1：每个输入变更端点必须把 Month.results_stale 置 True（写侧），
+    让 /results 的 stale 标志提示前端"数据已变更，请重新计算"。
+    覆盖：set_duty / transfer_duty / set_targets / import_sales / import_gifts。
+    salary_policies.activate 不在内 —— 已计算月份策略锁定，新策略不改其冻结结果（T4.1/H10）。"""
+    from backend.app.db import Month
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)  # 建 2026-06 已计算月份
+
+    def _reset_stale():
+        db_session.get(Month, "2026-06").results_stale = False
+        db_session.commit()
+
+    def _assert_stale(label):
+        db_session.expire_all()
+        m = db_session.get(Month, "2026-06")
+        assert m.results_stale is True, f"{label} 后 results_stale 应为 True"
+
+    # set_duty (PUT /months/{m}/duty)
+    _reset_stale()
+    r = client.put("/months/2026-06/duty", headers=h, json={
+        "items": [{"store": "福景店", "date": "2026-06-01", "salesperson": "高睿"}]})
+    assert r.status_code == 200, r.text
+    _assert_stale("set_duty")
+
+    # transfer_duty (POST /months/{m}/duty/transfer)
+    _reset_stale()
+    r = client.post("/months/2026-06/duty/transfer", headers=h, json={
+        "from_store": "福景店", "to_store": "新店",
+        "date": "2026-06-01", "salesperson": "高睿"})
+    assert r.status_code == 200, r.text
+    _assert_stale("transfer_duty")
+
+    # set_targets (PUT /months/{m}/targets)
+    _reset_stale()
+    r = client.put("/months/2026-06/targets", headers=h, json={
+        "items": [{"store": "福景店", "target": "5"}]})
+    assert r.status_code == 200, r.text
+    _assert_stale("set_targets")
+
+    # import_sales (POST /months/{m}/import-sales)
+    _reset_stale()
+    s = tmp_path / "sales2.xlsx"; _sales_xlsx(s)
+    with open(s, "rb") as f:
+        r = client.post("/months/2026-06/import-sales", headers=h,
+                        files={"file": ("sales.xlsx", f)})
+    assert r.status_code == 200, r.text
+    _assert_stale("import_sales")
+
+    # import_gifts (POST /months/{m}/import-gifts)
+    _reset_stale()
+    g = tmp_path / "gifts.xlsx"
+    wb = openpyxl.Workbook(); ws = wb.active
+    ws.append(["订单号", "国际条码"])
+    ws.append(["R001", "6920001"])
+    wb.save(g)
+    with open(g, "rb") as f:
+        r = client.post("/months/2026-06/import-gifts", headers=h,
+                        files={"file": ("gifts.xlsx", f)})
+    assert r.status_code == 200, r.text
+    _assert_stale("import_gifts")
+
+
 def test_compute_recompute_preserves_policy_lock(tmp_path, client, db_session):
     """H10：首次 /compute 锁定 policy_version_id；策略变更后再次 /compute 不应覆盖锁定。
     若 do_compute 里 `if m.policy_version_id is None` 守卫被删除，本测试必须失败。"""

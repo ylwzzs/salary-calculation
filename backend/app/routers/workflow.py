@@ -33,6 +33,7 @@ def import_sales(month: str, file: UploadFile = File(...),
                  _: User = Depends(current_user), db: Session = Depends(get_db)):
     m = _get_month(db, month)
     m.sales_file = _save_upload(month, file, "sales")
+    m.results_stale = True
     db.commit()
 
     # 同时导入到数据库并打标签
@@ -59,6 +60,7 @@ def import_gifts(month: str, file: UploadFile = File(...),
                  _: User = Depends(current_user), db: Session = Depends(get_db)):
     m = _get_month(db, month)
     m.gifts_file = _save_upload(month, file, "gifts")
+    m.results_stale = True
     db.commit()
 
     # 如果已有销售数据，重新打标签
@@ -136,11 +138,12 @@ def infer(month: str, _: User = Depends(current_user), db: Session = Depends(get
 @router.put("/months/{month}/duty")
 def set_duty(month: str, body: DutyBatch,
              _: User = Depends(current_user), db: Session = Depends(get_db)):
-    _get_month(db, month)
+    m = _get_month(db, month)
     db.query(Duty).filter_by(month=month).delete()
     for it in body.items:
         db.add(Duty(month=month, store=it.store,
                     duty_date=date_type.fromisoformat(it.date), salesperson=it.salesperson))
+    m.results_stale = True
     db.commit()
     return {"saved": len(body.items)}
 
@@ -169,7 +172,7 @@ def transfer_duty(
     db: Session = Depends(get_db),
 ):
     """拖拽排班：人员转移到另一门店，同时转移销售数据"""
-    _get_month(db, month)
+    m = _get_month(db, month)
     from backend.app.db import Duty
     from backend.app.services.sales_importer import transfer_sales
 
@@ -186,6 +189,7 @@ def transfer_duty(
         duty_date=date_type.fromisoformat(body.date),
         salesperson=body.salesperson,
     ))
+    m.results_stale = True
     db.commit()
 
     # 同步转移销售数据

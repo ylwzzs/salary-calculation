@@ -73,6 +73,15 @@
   - **调班转移做正交标记而非标签**：转移行同时也是"有效计提"等，做成标签会丢失提成命运信息；正交标记两者都保留。
 - **影响**：引擎需对剔除行也产出 0 提成 DetailRow（commission=0 + 原因标签）；SalesRecord.tag 与引擎命运对齐（补"非乳品"）；导出多一列 `is_transferred`。
 
+## ADR-009 费率存储约定：SalaryPolicyVersion 存百分数，边界 /100 ✅
+
+- **决策**：`SalaryPolicyVersion.content.commission_rates` 存**百分数**（如 `12` = 12%，与 UI 工资策略编辑器一致、人类友好）；`engine_bridge.rates_from_db` 在 DB→引擎边界 **÷100** 转分数（`0.12`）喂引擎。引擎内部仍用分数乘数，不动。
+- **背景**：旧 `RateVersion` 存分数（`seed_rate_table` 做 /100）；UI 策略编辑器存百分数。两表约定不同。C1 切换引擎读 `SalaryPolicyVersion` 时，若不做 /100 会产生 **100× 提成误差**（12 当乘数而非 0.12）。
+- **备选**：(B) 把策略改存分数与 RateVersion 一致——需动 UI 编辑器+前端+现有数据迁移，范围大，弃。
+- **理由（选 A）**：单一转换点（`rates_from_db`），UI 保持人类友好的百分数，引擎口径不变；改动最小、风险最低。
+- **影响**：conftest 种子按百分数存；`migrate_rates_to_policy` 脚本对 RateVersion 分数 ×100 后存入；相关测试喂 `"15"` 期望 `Decimal("0.15")`。
+- **决策过程**：T3.2 实现中发现（spec 原假设 `Decimal(str(pct))` 直接用是错的，会 100× 误差），按铁律 2 停下报用户；用户选 A（2026-07-19）。
+
 ---
 
 ## ✅ 本轮确认项（2026-07-19，用户已全部同意）

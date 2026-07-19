@@ -131,7 +131,10 @@ class Result(Base):
     achievement = Column(Numeric, nullable=False)
     bucket = Column(String, nullable=False)
     commission = Column(Numeric, nullable=False)
-    __table_args__ = (UniqueConstraint("month", "person", "store", name="uq_result"),)
+    __table_args__ = (
+        UniqueConstraint("month", "person", "store", name="uq_result"),
+        Index("idx_results_month", "month"),
+    )
 
 
 class DetailRow(Base):
@@ -154,6 +157,7 @@ class DetailRow(Base):
     is_transferred = Column(Boolean, default=False)
     __table_args__ = (
         UniqueConstraint("month", "sales_record_id", name="uq_detail_month_sr"),
+        Index("idx_detail_month_person_store", "month", "person", "store"),
     )
 
 
@@ -185,6 +189,7 @@ class SalesRecord(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     __table_args__ = (
         UniqueConstraint("month", "receipt", "store", "sale_date", "barcode", "amount", name="uq_sales_record"),
+        Index("idx_sales_month_store_date_person", "month", "store", "sale_date", "salesperson"),
     )
 
 

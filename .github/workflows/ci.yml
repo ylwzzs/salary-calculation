@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: registry-crs-xinan1.ctyun.cn
-  NAMESPACE: hookflow/salary_calculation
+  NAMESPACE: hookflow
   BACKEND_IMAGE: salary-backend
   FRONTEND_IMAGE: salary-frontend
 

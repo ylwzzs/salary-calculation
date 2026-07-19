@@ -27,6 +27,27 @@ def _policy_content():
     return {"margin_rules": {}, "commission_rates": cr}
 
 
+def _setup_computed_month(tmp_path, client, h):
+    """建一个已计算完成的月份（建月→激活策略→门店/商品/目标→导入销售→排班→compute），
+    返回 month 字符串。供多个 /compute 相关测试复用，消除三处脚手架重复。"""
+    client.post("/months", headers=h, json={"month": "2026-06"})
+    # 创建并激活工资策略（compute 读 SalaryPolicyVersion，策略存百分数；ADR-009）
+    client.post("/salary-policies", headers=h, json={
+        "effective_from": "2026-01-01", "content": _policy_content()})
+    client.put("/stores/福景店", headers=h, json={"name": "福景店", "group": "1组", "store_class": "A"})
+    client.put("/products/6920001", headers=h, json={
+        "barcode": "6920001", "name": "低温奶", "spec": "200ml", "category": "低温奶", "cost": "2"})
+    client.put("/months/2026-06/targets", headers=h, json={"items": [{"store": "福景店", "target": "3"}]})
+    s = tmp_path / "sales.xlsx"; _sales_xlsx(s)
+    with open(s, "rb") as f:
+        client.post("/months/2026-06/import-sales", headers=h, files={"file": ("sales.xlsx", f)})
+    client.post("/months/2026-06/infer-duty", headers=h)
+    client.put("/months/2026-06/duty", headers=h, json={
+        "items": [{"store": "福景店", "date": "2026-06-01", "salesperson": "高睿"}]})
+    client.post("/months/2026-06/compute", headers=h)
+    return "2026-06"
+
+
 def test_import_sales_and_gifts(tmp_path, client):
     h = auth_header(client)
     client.post("/months", headers=h, json={"month": "2026-06"})
@@ -58,22 +79,7 @@ def test_infer_and_confirm_duty(tmp_path, client):
 
 def test_compute_and_result(tmp_path, client):
     h = auth_header(client)
-    client.post("/months", headers=h, json={"month": "2026-06"})
-    # 创建并激活工资策略（compute 读 SalaryPolicyVersion，策略存百分数；ADR-009）
-    client.post("/salary-policies", headers=h, json={
-        "effective_from": "2026-01-01", "content": _policy_content()})
-    client.put("/stores/福景店", headers=h, json={"name": "福景店", "group": "1组", "store_class": "A"})
-    client.put("/products/6920001", headers=h, json={
-        "barcode": "6920001", "name": "低温奶", "spec": "200ml", "category": "低温奶", "cost": "2"})
-    client.put("/months/2026-06/targets", headers=h, json={"items": [{"store": "福景店", "target": "3"}]})
-    s = tmp_path / "sales.xlsx"; _sales_xlsx(s)
-    with open(s, "rb") as f:
-        client.post("/months/2026-06/import-sales", headers=h, files={"file": ("sales.xlsx", f)})
-    client.post("/months/2026-06/infer-duty", headers=h)
-    client.put("/months/2026-06/duty", headers=h, json={
-        "items": [{"store": "福景店", "date": "2026-06-01", "salesperson": "高睿"}]})
-    r = client.post("/months/2026-06/compute", headers=h)
-    assert r.status_code == 200
+    _setup_computed_month(tmp_path, client, h)
     res = client.get("/months/2026-06/results", headers=h).json()
     # 目标3/天0.1，卖3→达成3000%→GE_100；A低温高毛(单价3成本2=33%>15%)13%→0.39
     assert any(x["person"] == "高睿" and abs(x["commission"] - 0.39) < 0.01 for x in res["salary"])
@@ -81,7 +87,7 @@ def test_compute_and_result(tmp_path, client):
 
 def test_results_and_export(tmp_path, client):
     h = auth_header(client)
-    test_compute_and_result(tmp_path, client)  # 复用：已算好 2026-06
+    _setup_computed_month(tmp_path, client, h)  # 复用：已算好 2026-06
     res = client.get("/months/2026-06/results", headers=h).json()
     assert res["salary"] and res["breakdown"]
     exp = client.get("/months/2026-06/export", headers=h)
@@ -97,23 +103,7 @@ def test_compute_materializes_result_and_detail(tmp_path, client, db_session):
     from backend.app.db import Result, DetailRow, Month
 
     h = auth_header(client)
-    client.post("/months", headers=h, json={"month": "2026-06"})
-    # 激活工资策略（/compute 读 SalaryPolicyVersion；ADR-009）
-    client.post("/salary-policies", headers=h, json={
-        "effective_from": "2026-01-01", "content": _policy_content()})
-    client.put("/stores/福景店", headers=h, json={"name": "福景店", "group": "1组", "store_class": "A"})
-    client.put("/products/6920001", headers=h, json={
-        "barcode": "6920001", "name": "低温奶", "spec": "200ml", "category": "低温奶", "cost": "2"})
-    client.put("/months/2026-06/targets", headers=h, json={"items": [{"store": "福景店", "target": "3"}]})
-    s = tmp_path / "sales.xlsx"; _sales_xlsx(s)
-    with open(s, "rb") as f:
-        client.post("/months/2026-06/import-sales", headers=h, files={"file": ("sales.xlsx", f)})
-    client.post("/months/2026-06/infer-duty", headers=h)
-    client.put("/months/2026-06/duty", headers=h, json={
-        "items": [{"store": "福景店", "date": "2026-06-01", "salesperson": "高睿"}]})
-
-    r = client.post("/months/2026-06/compute", headers=h)
-    assert r.status_code == 200
+    _setup_computed_month(tmp_path, client, h)
 
     # Result 与 DetailRow 均落库
     assert db_session.query(Result).filter_by(month="2026-06").count() > 0
@@ -131,3 +121,35 @@ def test_compute_materializes_result_and_detail(tmp_path, client, db_session):
     assert m.status == "computed"
     assert m.results_stale is False
     assert m.policy_version_id is not None
+
+
+def test_compute_recompute_preserves_policy_lock(tmp_path, client, db_session):
+    """H10：首次 /compute 锁定 policy_version_id；策略变更后再次 /compute 不应覆盖锁定。
+    若 do_compute 里 `if m.policy_version_id is None` 守卫被删除，本测试必须失败。"""
+    from backend.app.db import Month
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    # 首次 compute 后，月份已锁定到 v1
+    db_session.expire_all()
+    m = db_session.get(Month, "2026-06")
+    v1_id = m.policy_version_id
+    assert v1_id is not None, "首次 compute 应锁定 policy_version_id"
+
+    # 新建第二个工资策略（/salary-policies 会把 is_current 切到新版本，即 v2）
+    r2 = client.post("/salary-policies", headers=h, json={
+        "effective_from": "2026-07-01", "content": _policy_content()})
+    assert r2.status_code == 201
+    v2_id = r2.json()["id"]
+    assert v2_id != v1_id
+
+    # 再次 /compute：守卫 `if m.policy_version_id is None` 应使其跳过覆盖，仍保持 v1
+    r = client.post("/months/2026-06/compute", headers=h)
+    assert r.status_code == 200
+
+    db_session.expire_all()
+    m = db_session.get(Month, "2026-06")
+    assert m.policy_version_id == v1_id, (
+        f"重算不应覆盖已锁定的 policy_version_id: expected v1={v1_id}, got {m.policy_version_id}")
+    assert m.policy_version_id != v2_id

@@ -339,7 +339,8 @@ def do_compute(month: str, _: User = Depends(current_user), db: Session = Depend
             db.add(DetailRow(month=month, sales_record_id=d.sales_record_id, person=d.salesperson,
                              store=d.store, sale_date=d.sale_date, barcode=d.barcode,
                              product_name=d.product_name, tier=d.tier, bucket=d.bucket, rate=d.rate,
-                             amount=d.amount, commission=d.commission, tag=d.tag, is_transferred=False))
+                             amount=d.amount, commission=d.commission, tag=d.tag,
+                             is_transferred=False))  # 占位，T7.1 按 SalesRecord 回填
         m = db.get(Month, month)
         m.status = "computed"
         m.results_stale = False

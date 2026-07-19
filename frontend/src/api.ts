@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export const http = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || "http://localhost:8000",
+  baseURL: import.meta.env.VITE_API_BASE || "/api",
 });
 
 const TOKEN_KEY = "salary_token";
@@ -51,6 +51,7 @@ export interface Product {
 export const productsApi = {
   list: () => http.get<Product[]>("/products").then((r) => r.data),
   upsert: (p: Product) => http.put<Product>(`/products/${p.barcode}`, p).then((r) => r.data),
+  patch: (barcode: string, data: Partial<Product>) => http.patch<Product>(`/products/${barcode}`, data).then((r) => r.data),
   remove: (barcode: string) => http.delete(`/products/${barcode}`).then((r) => r.data),
 };
 
@@ -65,6 +66,7 @@ export interface Store {
 export const storesApi = {
   list: () => http.get<Store[]>("/stores").then((r) => r.data),
   upsert: (s: Store) => http.put<Store>(`/stores/${s.name}`, s).then((r) => r.data),
+  patch: (name: string, data: Partial<Store>) => http.patch<Store>(`/stores/${name}`, data).then((r) => r.data),
   remove: (name: string) => http.delete(`/stores/${name}`).then((r) => r.data),
   batchClass: (group: string, store_class: string) =>
     http.post<{ updated: number }>("/stores/batch-class", { group, store_class }).then((r) => r.data),
@@ -131,6 +133,28 @@ export const workflowApi = {
     http.post<{ details: number; warnings: string[]; total: number }>(`/months/${month}/compute`).then((r) => r.data),
   getResults: (month: string) =>
     http.get<{ salary: { person: string; commission: number }[]; breakdown: any[] }>(`/months/${month}/results`).then((r) => r.data),
+  getSalesDetail: (month: string, store: string, person: string, date: string) =>
+    http.get<{ items: {
+      id: number; receipt: string; src_order: string | null; store: string; sale_date: string;
+      barcode: string; product_name: string; qty: number; amount: number; unit_price: number;
+      salesperson: string; cashier: string; is_return: boolean; is_online: boolean; tag: string;
+      original_store: string | null; original_date: string | null; transfer_reason: string | null;
+    }[] }>(
+      `/months/${month}/sales-detail`, { params: { store, person, date } }
+    ).then((r) => r.data),
+  getTierDetail: (month: string, store: string, person: string, bucket: string) =>
+    http.get<{ items: {
+      id: number; receipt: string; src_order: string | null; store: string; sale_date: string;
+      barcode: string; product_name: string; qty: number; amount: number; unit_price: number;
+      salesperson: string; cashier: string; is_return: boolean; is_online: boolean; tag: string;
+      original_store: string | null; original_date: string | null; transfer_reason: string | null;
+    }[] }>(
+      `/months/${month}/tier-detail`, { params: { store, person, bucket } }
+    ).then((r) => r.data),
+  getTierSummary: (month: string, store: string, person: string) =>
+    http.get<{ tiers: { name: string; sales: number; qty: number; rate: number; rate_percent: string; commission: number }[]; total_sales: number; total_commission: number; bucket: string; target: number; monthly_target: number; duty_days: number }>(
+      `/months/${month}/tier-summary`, { params: { store, person } }
+    ).then((r) => r.data),
   downloadExport: async (month: string) => {
     const res = await http.get(`/months/${month}/export`, { responseType: "blob" });
     const url = URL.createObjectURL(res.data);

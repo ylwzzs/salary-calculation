@@ -4,7 +4,7 @@ services:
   backend:
     image: registry-crs-xinan1.ctyun.cn/hookflow/salary-backend:latest
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - salary-data:/data
       - /opt/salary/uploads:/app/uploads
@@ -21,7 +21,7 @@ services:
   frontend:
     image: registry-crs-xinan1.ctyun.cn/hookflow/salary-frontend:latest
     ports:
-      - "80:80"
+      - "3000:80"
     depends_on:
       - backend
     restart: always

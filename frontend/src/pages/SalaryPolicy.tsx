@@ -595,7 +595,7 @@ export default function SalaryPolicy() {
               <div className="mb-6">
                 <h3 className="text-sm font-medium text-zinc-700 mb-2">毛利率分类规则 (%)</h3>
                 <p className="text-xs text-zinc-400 mb-3">
-                  正价：毛利率 > 最低值；低价：最低 ≤ 毛利率 ≤ 最高；特价：毛利率 ≤ 最高值
+                  正价：毛利率 &gt; 最低值；低价：最低 ≤ 毛利率 ≤ 最高；特价：毛利率 ≤ 最高值
                 </p>
                 {editContent?.margin_rules && renderMarginRulesEdit(editContent.margin_rules)}
               </div>

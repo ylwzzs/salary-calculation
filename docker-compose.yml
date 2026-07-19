@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - salary-data:/data
+      - ./uploads:/app/uploads
+    environment:
+      - SALARY_DB=/data/salary.db
+      - SALARY_TOKEN_SECRET=${SALARY_TOKEN_SECRET:-dev-secret-change-me}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  salary-data:

@@ -1,0 +1,27 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# 系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 依赖
+COPY requirements.txt pyproject.toml ./
+COPY salary_engine/ ./salary_engine/
+RUN pip install --no-cache-dir -e ".[web]" --no-deps || \
+    pip install --no-cache-dir -e ".[web]"
+
+# 后端代码
+COPY backend/ ./backend/
+
+# 静态资源（上传目录）
+RUN mkdir -p /app/uploads
+
+ENV SALARY_DB=/data/salary.db
+ENV SALARY_TOKEN_SECRET=change-me-in-production
+
+EXPOSE 8000
+
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -3,9 +3,9 @@ import calendar
 from datetime import date
 from decimal import Decimal
 
-from salary_engine.models import Product, Store, RateTable
+from salary_engine.models import Product, Store, RateTable, SalesLine
 from backend.app.db import Product as ProductRow, Store as StoreRow
-from backend.app.db import MonthlyTarget, RateVersion, Duty
+from backend.app.db import MonthlyTarget, RateVersion, Duty, SalesRecord
 
 
 def days_in_month(month: str) -> int:
@@ -49,3 +49,18 @@ def targets_from_db(db, month: str) -> dict:
 def duty_override_from_db(db, month: str) -> dict:
     return {(r.store, r.duty_date): r.salesperson
             for r in db.query(Duty).filter_by(month=month).all()}
+
+
+def sales_lines_from_db(db, month: str) -> list:
+    """从 SalesRecord 构建 SalesLine（计算真值源），携带 sales_record_id。
+    不过滤——把该月全部销售/退货行原样交给引擎；过滤（赠送/不计提成/非乳品）由引擎做。"""
+    rows = db.query(SalesRecord).filter_by(month=month).all()
+    out = []
+    for r in rows:
+        out.append(SalesLine(
+            receipt=r.receipt, src_order=r.src_order, store=r.store, sale_date=r.sale_date,
+            barcode=r.barcode, product_name=r.product_name or "", qty=r.qty, amount=r.amount,
+            unit_price=r.unit_price, is_return=r.is_return, is_online=r.is_online,
+            cashier=r.cashier or "", salesperson=r.salesperson or "",
+            sales_record_id=r.id))
+    return out

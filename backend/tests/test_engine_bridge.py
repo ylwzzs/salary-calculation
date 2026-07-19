@@ -49,3 +49,21 @@ def test_duty_override_bridge():
     s.commit()
     ov = duty_override_from_db(s, "2026-06")
     assert ov[("福景店", date(2026, 6, 1))] == "高睿"
+
+
+def test_sales_lines_from_db_carries_id():
+    from backend.app.db import SessionLocal, SalesRecord
+    from backend.app.services.engine_bridge import sales_lines_from_db
+    from datetime import date
+    db = SessionLocal()
+    try:
+        db.add(SalesRecord(month="2026-01", receipt="R1", store="S", sale_date=date(2026,1,1),
+                           barcode="B", qty=1, amount=10, unit_price=10, salesperson="高睿",
+                           cashier="", is_return=False, is_online=False, tag="有效"))
+        db.commit()
+        lines = sales_lines_from_db(db, "2026-01")
+        assert len(lines) == 1
+        assert lines[0].sales_record_id is not None
+        assert lines[0].receipt == "R1"
+    finally:
+        db.query(SalesRecord).filter_by(receipt="R1").delete(); db.commit(); db.close()

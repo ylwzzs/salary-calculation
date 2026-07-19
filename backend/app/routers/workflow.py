@@ -207,7 +207,10 @@ from backend.app.services.engine_bridge import (
     rates_from_db, products_from_db, stores_from_db, targets_from_db,
     duty_override_from_db, days_in_month,
 )
-from backend.app.db import Result, RateVersion, Anomaly, Store, Product, MonthlyTarget
+from backend.app.db import (
+    Result, DetailRow, RateVersion, SalaryPolicyVersion,
+    Anomaly, Store, Product, MonthlyTarget,
+)
 
 
 @router.post("/months/{month}/check-anomalies")
@@ -318,18 +321,36 @@ def _run_compute(db, month: str):
 
 @router.post("/months/{month}/compute")
 def do_compute(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
+    """算一次、物化两表（P4 基础）：
+    - 聚合 Result（person×store 一行）
+    - 逐行 DetailRow（与 SalesRecord 1:1 的提成台账）
+    同事务删除-插入-提交，失败回滚；置 status=computed、results_stale=False；
+    policy_version_id 仅首次锁定（None 时才写），重算不覆盖（修 H10）。
+    """
     result = _run_compute(db, month)
-    db.query(Result).filter_by(month=month).delete()
-    for (person, store), v in result.breakdown.items():
-        db.add(Result(month=month, person=person, store=store,
-                      sales=v["sales"], target=v["target"], achievement=v["achievement"],
-                      bucket=v["bucket"], commission=v["commission"]))
-    m = db.get(Month, month)
-    m.status = "computed"
-    cur = db.query(RateVersion).filter_by(is_current=True).first()
-    if cur:
-        m.rate_version_id = cur.id
-    db.commit()
+    try:
+        db.query(Result).filter_by(month=month).delete()
+        db.query(DetailRow).filter_by(month=month).delete()
+        for (person, store), v in result.breakdown.items():
+            db.add(Result(month=month, person=person, store=store,
+                          sales=v["sales"], target=v["target"], achievement=v["achievement"],
+                          bucket=v["bucket"], commission=v["commission"]))
+        for d in result.details:
+            db.add(DetailRow(month=month, sales_record_id=d.sales_record_id, person=d.salesperson,
+                             store=d.store, sale_date=d.sale_date, barcode=d.barcode,
+                             product_name=d.product_name, tier=d.tier, bucket=d.bucket, rate=d.rate,
+                             amount=d.amount, commission=d.commission, tag=d.tag, is_transferred=False))
+        m = db.get(Month, month)
+        m.status = "computed"
+        m.results_stale = False
+        if m.policy_version_id is None:          # 仅首次锁（修 H10），重算不覆盖
+            cur = db.query(SalaryPolicyVersion).filter_by(is_current=True).first()
+            if cur:
+                m.policy_version_id = cur.id
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return {"details": len(result.details), "warnings": result.warnings,
             "total": round(float(sum(result.commission_by_person.values())), 2)}
 

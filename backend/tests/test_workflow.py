@@ -88,3 +88,46 @@ def test_results_and_export(tmp_path, client):
     assert exp.status_code == 200
     ct = exp.headers.get("content-type", "")
     assert "spreadsheet" in ct or ct.startswith("application/vnd")
+
+
+def test_compute_materializes_result_and_detail(tmp_path, client, db_session):
+    """T4.1：/compute 必须同事务物化 Result（聚合）+ DetailRow（逐行），Σ 提成相等，
+    status=computed、results_stale=False、policy_version_id 仅首次锁定。"""
+    from decimal import Decimal
+    from backend.app.db import Result, DetailRow, Month
+
+    h = auth_header(client)
+    client.post("/months", headers=h, json={"month": "2026-06"})
+    # 激活工资策略（/compute 读 SalaryPolicyVersion；ADR-009）
+    client.post("/salary-policies", headers=h, json={
+        "effective_from": "2026-01-01", "content": _policy_content()})
+    client.put("/stores/福景店", headers=h, json={"name": "福景店", "group": "1组", "store_class": "A"})
+    client.put("/products/6920001", headers=h, json={
+        "barcode": "6920001", "name": "低温奶", "spec": "200ml", "category": "低温奶", "cost": "2"})
+    client.put("/months/2026-06/targets", headers=h, json={"items": [{"store": "福景店", "target": "3"}]})
+    s = tmp_path / "sales.xlsx"; _sales_xlsx(s)
+    with open(s, "rb") as f:
+        client.post("/months/2026-06/import-sales", headers=h, files={"file": ("sales.xlsx", f)})
+    client.post("/months/2026-06/infer-duty", headers=h)
+    client.put("/months/2026-06/duty", headers=h, json={
+        "items": [{"store": "福景店", "date": "2026-06-01", "salesperson": "高睿"}]})
+
+    r = client.post("/months/2026-06/compute", headers=h)
+    assert r.status_code == 200
+
+    # Result 与 DetailRow 均落库
+    assert db_session.query(Result).filter_by(month="2026-06").count() > 0
+    assert db_session.query(DetailRow).filter_by(month="2026-06").count() > 0
+
+    # Σ 不变量：逐行台账提成 == 聚合表提成
+    dsum = sum((d.commission for d in db_session.query(DetailRow).filter_by(month="2026-06").all()),
+               Decimal(0))
+    rsum = sum((x.commission for x in db_session.query(Result).filter_by(month="2026-06").all()),
+               Decimal(0))
+    assert dsum == rsum, f"Σ mismatch: detail={dsum} result={rsum}"
+
+    # 状态与首次锁定策略
+    m = db_session.get(Month, "2026-06")
+    assert m.status == "computed"
+    assert m.results_stale is False
+    assert m.policy_version_id is not None

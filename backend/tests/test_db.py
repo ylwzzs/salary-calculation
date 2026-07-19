@@ -19,3 +19,11 @@ def test_target_unique_month_store():
     with Session(eng) as s:
         s.add(MonthlyTarget(month="2026-06", store="福景店", target=84000))
         s.commit()
+
+
+def test_wal_enabled():
+    from backend.app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        mode = conn.execute(text("PRAGMA journal_mode")).scalar()
+    assert str(mode).lower() == "wal"

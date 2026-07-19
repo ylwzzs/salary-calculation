@@ -25,6 +25,8 @@ build/
 
 # 数据库与上传
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 uploads/

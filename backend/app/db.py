@@ -2,7 +2,7 @@
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, Date, DateTime, JSON,
-    UniqueConstraint, ForeignKey, create_engine,
+    UniqueConstraint, ForeignKey, create_engine, event,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
@@ -71,6 +71,16 @@ class SalaryPolicyVersion(Base):
 
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragma(dbapi_conn, _):
+    """每个新连接开启 WAL（并发读 + 单写）与 10s busy_timeout，
+    消除读写锁竞争导致的卡死（audit R3）。"""
+    cur = dbapi_conn.cursor()
+    cur.execute("PRAGMA journal_mode=WAL")
+    cur.execute("PRAGMA busy_timeout=10000")
+    cur.close()
 
 
 def init_db():

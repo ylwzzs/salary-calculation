@@ -282,6 +282,8 @@ def test_compute_single_flight(tmp_path, client, db_session):
 
     # 模拟另一个正在进行的 compute：测试线程持有该月的锁
     lock = wf._get_lock("2026-06")
+    # setdefault 保证同月份两次取锁是同一实例（消除 check-then-act 竞态）
+    assert wf._get_lock("2026-06") is lock
     got = lock.acquire(blocking=False)
     assert got
     try:

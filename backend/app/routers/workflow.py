@@ -330,10 +330,13 @@ _compute_locks: dict[str, threading.Lock] = {}
 
 
 def _get_lock(month: str) -> threading.Lock:
-    """返回某月份专属的 Lock（惰性创建）。"""
-    if month not in _compute_locks:
-        _compute_locks[month] = threading.Lock()
-    return _compute_locks[month]
+    """返回某月份专属的 Lock（惰性创建）。
+
+    用 setdefault 保证原子性：check-then-assign 在两个首算线程并发时可能
+    各自 new 一个 Lock 并互相覆盖，返回不同实例导致单飞失效。setdefault
+    在 CPython GIL 下原子，命中时虽会构造一个被丢弃的 Lock，开销可忽略。
+    """
+    return _compute_locks.setdefault(month, threading.Lock())
 
 
 @router.post("/months/{month}/compute")
@@ -355,6 +358,7 @@ def do_compute(month: str, _: User = Depends(current_user), db: Session = Depend
         if m is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "月份不存在")
         if m.status == "computing":
+            # 注：若进程被强杀（OOM/SIGKILL），status 会停留在 computing 导致后续 409，需手工 SQL 复位
             raise HTTPException(status.HTTP_409_CONFLICT, "该月份正在计算")
         prev_status = m.status
         m.status = "computing"

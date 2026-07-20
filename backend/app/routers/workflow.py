@@ -1,4 +1,5 @@
 import os
+import threading
 from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
@@ -33,6 +34,7 @@ def import_sales(month: str, file: UploadFile = File(...),
                  _: User = Depends(current_user), db: Session = Depends(get_db)):
     m = _get_month(db, month)
     m.sales_file = _save_upload(month, file, "sales")
+    m.results_stale = True
     db.commit()
 
     # 同时导入到数据库并打标签
@@ -59,6 +61,7 @@ def import_gifts(month: str, file: UploadFile = File(...),
                  _: User = Depends(current_user), db: Session = Depends(get_db)):
     m = _get_month(db, month)
     m.gifts_file = _save_upload(month, file, "gifts")
+    m.results_stale = True
     db.commit()
 
     # 如果已有销售数据，重新打标签
@@ -136,11 +139,12 @@ def infer(month: str, _: User = Depends(current_user), db: Session = Depends(get
 @router.put("/months/{month}/duty")
 def set_duty(month: str, body: DutyBatch,
              _: User = Depends(current_user), db: Session = Depends(get_db)):
-    _get_month(db, month)
+    m = _get_month(db, month)
     db.query(Duty).filter_by(month=month).delete()
     for it in body.items:
         db.add(Duty(month=month, store=it.store,
                     duty_date=date_type.fromisoformat(it.date), salesperson=it.salesperson))
+    m.results_stale = True
     db.commit()
     return {"saved": len(body.items)}
 
@@ -169,7 +173,7 @@ def transfer_duty(
     db: Session = Depends(get_db),
 ):
     """拖拽排班：人员转移到另一门店，同时转移销售数据"""
-    _get_month(db, month)
+    m = _get_month(db, month)
     from backend.app.db import Duty
     from backend.app.services.sales_importer import transfer_sales
 
@@ -186,6 +190,7 @@ def transfer_duty(
         duty_date=date_type.fromisoformat(body.date),
         salesperson=body.salesperson,
     ))
+    m.results_stale = True
     db.commit()
 
     # 同步转移销售数据
@@ -207,7 +212,10 @@ from backend.app.services.engine_bridge import (
     rates_from_db, products_from_db, stores_from_db, targets_from_db,
     duty_override_from_db, days_in_month,
 )
-from backend.app.db import Result, RateVersion, Anomaly, Store, Product, MonthlyTarget
+from backend.app.db import (
+    Result, DetailRow, SalaryPolicyVersion,
+    Anomaly, Store, Product, MonthlyTarget,
+)
 
 
 @router.post("/months/{month}/check-anomalies")
@@ -292,10 +300,17 @@ def _run_compute(db, month: str):
     m = _get_month(db, month)
     if not m.sales_file:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "尚未导入销售流水")
-    sales = _load_sales_lines(m.sales_file)
+    # 销售流水以 SalesRecord 为真值源（C2：调班/编辑后立即对计算可见）
+    from backend.app.services.engine_bridge import sales_lines_from_db
+    sales = sales_lines_from_db(db, month)
+    if not sales:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "尚未导入销售流水")
     gifts = load_gift_keys_xlsx(m.gifts_file) if m.gifts_file else set()
-    # 使用锁定的费率版本，若无则用当前版本
-    rate_table = rates_from_db(db, m.rate_version_id)
+    # 使用锁定的工资策略版本，若无则用当前激活版本（ADR-009：策略存百分数，边界 ÷100）
+    try:
+        rate_table = rates_from_db(db, m.policy_version_id)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
     result = compute(
         sales_lines=sales,
         products=products_from_db(db),
@@ -309,27 +324,87 @@ def _run_compute(db, month: str):
     return result
 
 
+# 单进程内按月加锁，防同一月份并发 /compute 叠加 CPU-bound 工作（治 R3 卡死）。
+# 注：仅适用单进程 uvicorn 部署（当前 Docker 单实例）；多进程需换 DB 级锁，超出本任务范围。
+_compute_locks: dict[str, threading.Lock] = {}
+
+
+def _get_lock(month: str) -> threading.Lock:
+    """返回某月份专属的 Lock（惰性创建）。
+
+    用 setdefault 保证原子性：check-then-assign 在两个首算线程并发时可能
+    各自 new 一个 Lock 并互相覆盖，返回不同实例导致单飞失效。setdefault
+    在 CPython GIL 下原子，命中时虽会构造一个被丢弃的 Lock，开销可忽略。
+    """
+    return _compute_locks.setdefault(month, threading.Lock())
+
+
 @router.post("/months/{month}/compute")
 def do_compute(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
-    result = _run_compute(db, month)
-    db.query(Result).filter_by(month=month).delete()
-    for (person, store), v in result.breakdown.items():
-        db.add(Result(month=month, person=person, store=store,
-                      sales=v["sales"], target=v["target"], achievement=v["achievement"],
-                      bucket=v["bucket"], commission=v["commission"]))
-    m = db.get(Month, month)
-    m.status = "computed"
-    cur = db.query(RateVersion).filter_by(is_current=True).first()
-    if cur:
-        m.rate_version_id = cur.id
-    db.commit()
+    """算一次、物化两表（P4 基础）：
+    - 聚合 Result（person×store 一行）
+    - 逐行 DetailRow（与 SalesRecord 1:1 的提成台账）
+    同事务删除-插入-提交，失败回滚；置 status=computed、results_stale=False；
+    policy_version_id 仅首次锁定（None 时才写），重算不覆盖（修 H10）。
+
+    T5.2（治 R3）：按月加进程内锁，第二个并发 /compute 立即返回 409；
+    计算前置 status=computing，失败时恢复先前值，避免月份卡死在 computing。
+    """
+    lock = _get_lock(month)
+    if not lock.acquire(blocking=False):
+        raise HTTPException(status.HTTP_409_CONFLICT, "该月份正在计算，请稍候")
+    try:
+        m = db.get(Month, month)
+        if m is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "月份不存在")
+        if m.status == "computing":
+            # 注：若进程被强杀（OOM/SIGKILL），status 会停留在 computing 导致后续 409，需手工 SQL 复位
+            raise HTTPException(status.HTTP_409_CONFLICT, "该月份正在计算")
+        prev_status = m.status
+        m.status = "computing"
+        db.commit()
+        try:
+            result = _run_compute(db, month)
+            db.query(Result).filter_by(month=month).delete()
+            db.query(DetailRow).filter_by(month=month).delete()
+            for (person, store), v in result.breakdown.items():
+                db.add(Result(month=month, person=person, store=store,
+                              sales=v["sales"], target=v["target"], achievement=v["achievement"],
+                              bucket=v["bucket"], commission=v["commission"]))
+            for d in result.details:
+                db.add(DetailRow(month=month, sales_record_id=d.sales_record_id, person=d.salesperson,
+                                 store=d.store, sale_date=d.sale_date, barcode=d.barcode,
+                                 product_name=d.product_name, tier=d.tier, bucket=d.bucket, rate=d.rate,
+                                 amount=d.amount, commission=d.commission, tag=d.tag,
+                                 is_transferred=False))  # 占位，T7.1 按 SalesRecord 回填
+            m = db.get(Month, month)
+            m.status = "computed"
+            m.results_stale = False
+            if m.policy_version_id is None:          # 仅首次锁（修 H10），重算不覆盖
+                cur = db.query(SalaryPolicyVersion).filter_by(is_current=True).first()
+                if cur:
+                    m.policy_version_id = cur.id
+            db.commit()
+        except Exception:
+            db.rollback()
+            # 恢复 status，避免失败的 compute 把月份卡在 "computing"
+            m2 = db.get(Month, month)
+            if m2 is not None:
+                m2.status = prev_status
+                db.commit()
+            raise
+    finally:
+        lock.release()
     return {"details": len(result.details), "warnings": result.warnings,
             "total": round(float(sum(result.commission_by_person.values())), 2)}
 
 
 @router.get("/months/{month}/results")
 def results(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
-    """初版：从 Result 表汇总。Task 6 会扩展（breakdown 排序等）。"""
+    """初版：从 Result 表汇总。Task 6 会扩展（breakdown 排序等）。
+    stale=True 表示输入已变更或月份未计算，前端应提示"数据已变更，请重新计算"。
+    写侧触发（输入变更 → results_stale=True）在 T5.1 落地。"""
+    m = db.get(Month, month)
     rows = db.query(Result).filter_by(month=month).all()
     salary = defaultdict(Decimal)
     breakdown = []
@@ -343,7 +418,33 @@ def results(month: str, _: User = Depends(current_user), db: Session = Depends(g
                           "commission": round(float(r.commission), 2)})
     salary = sorted(({"person": p, "commission": round(float(c), 2)} for p, c in salary.items()),
                     key=lambda x: x["commission"], reverse=True)
-    return {"salary": salary, "breakdown": breakdown}
+    stale = bool(m is not None and (m.results_stale or m.status != "computed"))
+    return {"salary": salary, "breakdown": breakdown, "stale": stale}
+
+
+def _sales_item(r) -> Dict[str, Any]:
+    """把 SalesRecord 映射成前端 SalesItem 全字段字典。
+    sales_detail 与 tier_detail 共用（DRY），保证前端抽屉字段契约一致。"""
+    return {
+        "id": r.id,
+        "receipt": r.receipt,
+        "src_order": r.src_order,
+        "store": r.store,
+        "sale_date": r.sale_date.isoformat(),
+        "barcode": r.barcode,
+        "product_name": r.product_name,
+        "qty": float(r.qty),
+        "amount": round(float(r.amount), 2),
+        "unit_price": round(float(r.unit_price), 2),
+        "salesperson": r.salesperson,
+        "cashier": r.cashier,
+        "is_return": r.is_return,
+        "is_online": r.is_online,
+        "tag": r.tag,
+        "original_store": r.original_store,
+        "original_date": r.original_date.isoformat() if r.original_date else None,
+        "transfer_reason": r.transfer_reason,
+    }
 
 
 @router.get("/months/{month}/sales-detail")
@@ -360,206 +461,81 @@ def sales_detail(month: str, store: str, person: str, date: str,
         SalesRecord.sale_date == target_date,
     ).order_by(SalesRecord.receipt, SalesRecord.id).all()
 
-    items = []
-    for r in records:
-        items.append({
-            "id": r.id,
-            "receipt": r.receipt,
-            "src_order": r.src_order,
-            "store": r.store,
-            "sale_date": r.sale_date.isoformat(),
-            "barcode": r.barcode,
-            "product_name": r.product_name,
-            "qty": float(r.qty),
-            "amount": round(float(r.amount), 2),
-            "unit_price": round(float(r.unit_price), 2),
-            "salesperson": r.salesperson,
-            "cashier": r.cashier,
-            "is_return": r.is_return,
-            "is_online": r.is_online,
-            "tag": r.tag,
-            "original_store": r.original_store,
-            "original_date": r.original_date.isoformat() if r.original_date else None,
-            "transfer_reason": r.transfer_reason,
-        })
-
+    items = [_sales_item(r) for r in records]
     return {"items": items}
 
 
 @router.get("/months/{month}/tier-detail")
 def tier_detail(month: str, store: str, person: str, bucket: str,
                 _: User = Depends(current_user), db: Session = Depends(get_db)):
-    """获取某人某店某档位的商品明细（与tier-summary逻辑一致）"""
-    from backend.app.db import SalesRecord, Duty
-    from salary_engine.margin import gross_margin, classify_tier
-
-    # 获取当班日期
-    duty_dates = set()
-    for d in db.query(Duty).filter_by(month=month, store=store, salesperson=person).all():
-        duty_dates.add(d.duty_date)
-
-    # 从数据库查询所有记录（包括退货）
-    all_records = db.query(SalesRecord).filter(
-        SalesRecord.month == month,
-        SalesRecord.store == store,
-        SalesRecord.salesperson == person,
-        SalesRecord.tag != "赠送",
-        SalesRecord.tag != "不计提成",
-    ).order_by(SalesRecord.receipt, SalesRecord.id).all()
-
-    products = {p.barcode: p for p in db.query(Product).all()}
-
-    # 按 (receipt, barcode) 分组，用 src_order 匹配退货
-    groups = defaultdict(lambda: {"sales": [], "returns": []})
-    for r in all_records:
-        if r.sale_date not in duty_dates:
-            continue
-        if r.is_online:
-            continue
-        p = products.get(r.barcode)
-        if not p:
-            continue
-        if r.is_return:
-            g = groups.get((r.src_order, r.barcode)) if r.src_order else None
-            if g and g["sales"]:
-                g["returns"].append(r)
-            else:
-                groups[("_return_" + r.receipt, r.barcode)]["returns"].append(r)
-        else:
-            groups[(r.receipt, r.barcode)]["sales"].append(r)
-
-    # 筛选属于该档位的记录组，返回明细
-    def _to_item(r):
-        return {
-            "id": r.id, "receipt": r.receipt, "src_order": r.src_order,
-            "store": r.store, "sale_date": r.sale_date.isoformat(),
-            "barcode": r.barcode, "product_name": r.product_name,
-            "qty": float(r.qty), "amount": round(float(r.amount), 2),
-            "unit_price": round(float(r.unit_price), 2),
-            "salesperson": r.salesperson, "cashier": r.cashier,
-            "is_return": r.is_return, "is_online": r.is_online, "tag": r.tag,
-            "original_store": r.original_store,
-            "original_date": r.original_date.isoformat() if r.original_date else None,
-            "transfer_reason": r.transfer_reason,
-        }
-
-    items = []
-    for key, g in groups.items():
-        if not g["sales"]:
-            for r in g["returns"]:
-                p = products.get(r.barcode)
-                if not p:
-                    continue
-                margin = gross_margin(r.unit_price, p.cost) if p.cost else Decimal(0)
-                try:
-                    product_tier = classify_tier(p.category, margin)
-                except (ValueError, TypeError):
-                    product_tier = "特价"
-                if product_tier == bucket:
-                    items.append(_to_item(r))
-            continue
-
-        s0 = g["sales"][0]
-        p = products.get(s0.barcode)
-        if not p:
-            continue
-
-        margin = gross_margin(s0.unit_price, p.cost) if p.cost else Decimal(0)
-        try:
-            product_tier = classify_tier(p.category, margin)
-        except (ValueError, TypeError):
-            product_tier = "特价"
-
-        if product_tier != bucket:
-            continue
-
-        for r in g["sales"]:
-            items.append(_to_item(r))
-        for r in g["returns"]:
-            items.append(_to_item(r))
-
+    """某人某店某档位的逐笔明细（读物化 DetailRow JOIN SalesRecord，零重算，字段与 sales_detail 一致）。
+    tier 仍来自 DetailRow（单一真值源，无需重推导）；JOIN SalesRecord 取前端所需全字段。"""
+    from backend.app.db import SalesRecord
+    rows = (db.query(DetailRow, SalesRecord)
+            .join(SalesRecord, SalesRecord.id == DetailRow.sales_record_id)
+            .filter(DetailRow.month == month, DetailRow.store == store,
+                    DetailRow.person == person, DetailRow.tier == bucket)
+            .all())
+    items = [_sales_item(sr) for _, sr in rows]
     return {"items": items}
 
 
 @router.get("/months/{month}/tier-summary")
 def tier_summary(month: str, store: str, person: str,
                  _: User = Depends(current_user), db: Session = Depends(get_db)):
-    """获取某人某店的档位汇总（直接调用计算器，保证与主计算完全一致）"""
-    result = _run_compute(db, month)
-
-    # 从计算器结果提取该人该店的details
-    details = [d for d in result.details if d.salesperson == person and d.store == store]
-    if not details:
-        return {"tiers": [], "total_sales": 0, "total_commission": 0, "bucket": "LT_70", "target": 0}
-
-    # 获取门店信息和费率表（使用锁定版本）
-    store_obj = db.get(Store, store)
-    store_class = store_obj.store_class if store_obj else "A"
-    m = db.get(Month, month)
-    rate_version = db.get(RateVersion, m.rate_version_id) if m.rate_version_id else db.query(RateVersion).filter_by(is_current=True).first()
-    rate_table = rate_version.rates if rate_version else {}
-
-    # 获取达标率档位
-    bucket = details[0].bucket
-
-    # 获取目标（按出勤天数折算的个人目标，与计算器一致）
-    target = db.query(MonthlyTarget).filter_by(month=month, store=store).first()
-    monthly_target = float(target.target) if target else 0
-    # 计算出勤天数（从details中提取不同的日期）
-    duty_days = len(set(d.sale_date for d in details))
-    days_in_month = 30  # 简化处理
-    daily_target = monthly_target / days_in_month
-    personal_target = daily_target * duty_days
-
-    # 按档位汇总
-    tier_sales = defaultdict(float)
-    tier_commission = defaultdict(float)
-    for d in details:
-        tier_sales[d.tier] += float(d.amount)
-        tier_commission[d.tier] += float(d.commission)
-
-    total_sales = sum(tier_sales.values())
-    total_commission = sum(tier_commission.values())
-
-    tiers_result = []
-    for tier_name in ["常温高毛", "常温低毛", "低温高毛", "低温低毛", "特价"]:
-        if tier_name == "特价":
-            rate = 0.01
-        else:
-            rate = float(Decimal(rate_table.get(store_class, {}).get(bucket, {}).get(tier_name, "0")))
-
-        tiers_result.append({
-            "name": tier_name,
-            "sales": round(tier_sales.get(tier_name, 0), 2),
-            "rate": rate,
-            "rate_percent": f"{rate * 100:.0f}%",
-            "commission": round(tier_commission.get(tier_name, 0), 2),
-        })
-
-    return {
-        "tiers": tiers_result,
-        "total_sales": round(total_sales, 2),
-        "total_commission": round(total_commission, 2),
-        "bucket": bucket,
-        "target": round(personal_target, 2),
-        "monthly_target": round(monthly_target, 2),
-        "duty_days": duty_days,
-    }
+    """某人某店档位汇总（读物化 DetailRow，零重算；rate 已是 SalaryPolicyVersion 口径）。"""
+    rows = db.query(DetailRow).filter_by(month=month, store=store, person=person).all()
+    if not rows:
+        return {"tiers": [], "total_sales": 0, "total_commission": 0, "bucket": "LT_70", "target": 0,
+                "monthly_target": 0, "duty_days": 0}
+    bucket = rows[0].bucket
+    tier_sales = defaultdict(float); tier_comm = defaultdict(float)
+    for d in rows:
+        tier_sales[d.tier] += float(d.amount); tier_comm[d.tier] += float(d.commission)
+    tgt = db.query(MonthlyTarget).filter_by(month=month, store=store).first()
+    monthly_target = float(tgt.target) if tgt else 0
+    duty_days = db.query(Duty).filter_by(month=month, store=store, salesperson=person).count()
+    personal_target = monthly_target / (days_in_month(month) or 30) * duty_days
+    tiers = []
+    for name in ["常温高毛", "常温低毛", "低温高毛", "低温低毛", "特价"]:
+        rate = next((float(d.rate) for d in rows if d.tier == name), 0.0)
+        tiers.append({"name": name, "sales": round(tier_sales.get(name, 0), 2), "rate": rate,
+                      "rate_percent": f"{rate * 100:.0f}%", "commission": round(tier_comm.get(name, 0), 2)})
+    return {"tiers": tiers, "total_sales": round(sum(tier_sales.values()), 2),
+            "total_commission": round(sum(tier_comm.values()), 2), "bucket": bucket,
+            "target": round(personal_target, 2), "monthly_target": round(monthly_target, 2),
+            "duty_days": duty_days}
 
 
 import tempfile
 import os as _os
 from fastapi import Response
-from salary_engine.exporter import write_excel
 
 
 @router.get("/months/{month}/export")
 def export(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
-    result = _run_compute(db, month)   # 重跑得到完整明细
+    """导出逐笔提成台账（T7.1）：读物化 DetailRow JOIN SalesRecord，零重算（治 R1）。
+    每条导入记录 = 台账一行；含去向标签 + 档位/比例/提成 + 调班信息 + 源 extra 全字段。
+    要点：不调用 _run_compute；调班信息以 SalesRecord.original_store 为真值源派生。
+    """
+    from sqlalchemy import text
+    from backend.app.services.ledger_export import write_ledger_excel
+
+    rows = db.execute(text("""
+        SELECT d.person, d.store, d.sale_date, d.barcode, d.product_name,
+               d.tier, d.bucket, d.rate, d.amount, d.commission, d.tag,
+               s.receipt, s.src_order, s.qty, s.unit_price, s.salesperson, s.cashier,
+               s.is_return, s.is_online,
+               s.original_store, s.original_date, s.transfer_reason, s.extra
+        FROM detail_rows d JOIN sales_records s ON d.sales_record_id = s.id
+        WHERE d.month = :m
+        ORDER BY d.person, d.store, d.sale_date
+    """), {"m": month}).mappings().all()
+
     fd, path = tempfile.mkstemp(suffix=".xlsx")
     _os.close(fd)
     try:
-        write_excel(result, path, month=month, db=db)
+        write_ledger_excel([dict(r) for r in rows], path, month)
         with open(path, "rb") as f:
             data = f.read()
     finally:

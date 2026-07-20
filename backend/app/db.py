@@ -2,7 +2,7 @@
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, Date, DateTime, JSON,
-    UniqueConstraint, ForeignKey, create_engine,
+    UniqueConstraint, ForeignKey, create_engine, event, Index,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
@@ -73,6 +73,16 @@ engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragma(dbapi_conn, _):
+    """每个新连接开启 WAL（并发读 + 单写）与 10s busy_timeout，
+    消除读写锁竞争导致的卡死（audit R3）。"""
+    cur = dbapi_conn.cursor()
+    cur.execute("PRAGMA journal_mode=WAL")
+    cur.execute("PRAGMA busy_timeout=10000")
+    cur.close()
+
+
 def init_db():
     Base.metadata.create_all(engine)
 
@@ -88,10 +98,11 @@ def get_db():
 class Month(Base):
     __tablename__ = "months"
     month = Column(String, primary_key=True)     # YYYY-MM
-    status = Column(String, default="draft")     # draft | computed
+    status = Column(String, default="draft")     # draft | computing | computed
     sales_file = Column(String, nullable=True)   # 上传的销售流水路径
     gifts_file = Column(String, nullable=True)   # 上传的让利明细路径
     rate_version_id = Column(Integer, nullable=True)  # 计算时锁定的比例表版本
+    results_stale = Column(Boolean, default=True)  # 输入变更后置 true，compute 后置 false
     policy_version_id = Column(Integer, ForeignKey("salary_policy_versions.id"), nullable=True)
     policy_version = relationship("SalaryPolicyVersion")
     current_step = Column(String(20), default="import")  # import/targets/duty/results
@@ -120,7 +131,34 @@ class Result(Base):
     achievement = Column(Numeric, nullable=False)
     bucket = Column(String, nullable=False)
     commission = Column(Numeric, nullable=False)
-    __table_args__ = (UniqueConstraint("month", "person", "store", name="uq_result"),)
+    __table_args__ = (
+        UniqueConstraint("month", "person", "store", name="uq_result"),
+        Index("idx_results_month", "month"),
+    )
+
+
+class DetailRow(Base):
+    """逐笔提成台账（compute 物化，逐行 1:1 对应 SalesRecord）"""
+    __tablename__ = "detail_rows"
+    id = Column(Integer, primary_key=True)
+    month = Column(String, nullable=False, index=True)
+    sales_record_id = Column(Integer, index=True)
+    person = Column(String, nullable=False)
+    store = Column(String, nullable=False)
+    sale_date = Column(Date, nullable=False)
+    barcode = Column(String)
+    product_name = Column(String)
+    tier = Column(String)        # 商品档位
+    bucket = Column(String)      # 达成档
+    rate = Column(Numeric)
+    amount = Column(Numeric, nullable=False)
+    commission = Column(Numeric, nullable=False)
+    tag = Column(String(20), nullable=False)  # 有效计提/退货冲抵/退货未匹配/赠送剔除/不计提成/非乳品
+    is_transferred = Column(Boolean, default=False)
+    __table_args__ = (
+        UniqueConstraint("month", "sales_record_id", name="uq_detail_month_sr"),
+        Index("idx_detail_month_person_store", "month", "person", "store"),
+    )
 
 
 class SalesRecord(Base):
@@ -147,9 +185,11 @@ class SalesRecord(Base):
     original_store = Column(String)  # 原始门店（调整前）
     original_date = Column(Date)    # 原始日期（调整前）
     transfer_reason = Column(String)  # 调整原因
+    extra = Column(JSON)  # 源 Excel 其余字段原样留底
     created_at = Column(DateTime, default=datetime.utcnow)
     __table_args__ = (
         UniqueConstraint("month", "receipt", "store", "sale_date", "barcode", "amount", name="uq_sales_record"),
+        Index("idx_sales_month_store_date_person", "month", "store", "sale_date", "salesperson"),
     )
 
 

@@ -20,3 +20,6 @@ include = ["salary_engine*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "backend/tests"]
+markers = [
+    "realdata: 跑真实 Excel 数据的冒烟/对账测试（文件大、慢，默认不跑需显式选）",
+]

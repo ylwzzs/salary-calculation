@@ -17,7 +17,10 @@ def import_sales_to_db(
     sales: List[SalesLine],
     gift_keys: Set[Tuple[str, str]],
 ) -> dict:
-    """将销售数据导入数据库，同时打标签（upsert模式）
+    """将销售数据导入数据库，同时打标签（批量 + 重导全替换）
+
+    - 批量：1000 行/批，避免逐行 round-trip（R4：9万行从分钟级降到秒级）。
+    - 重导清旧（H4）：导入前先 DELETE 当月所有 SalesRecord，重导 = 当月销售全量替换。
 
     Args:
         db: 数据库会话
@@ -31,15 +34,16 @@ def import_sales_to_db(
     # 获取商品信息（检查exclude_commission）
     products = {p.barcode: p for p in db.query(Product).all()}
 
+    # H4: 重导清旧行（当月全量替换）。注意：这会一并清掉 transfer_sales 改写的 store/date；
+    # 重导 = 解析后的销售全量重置，业绩调整需重新应用（重导会触发 results_stale）。
+    db.query(SalesRecord).filter_by(month=month).delete()
+
+    BATCH = 1000
+    values: List[dict] = []
     for s in sales:
-        # 确定标签
         tag = _determine_tag(s, products, gift_keys)
-
-        # 清洗门店名称
         cleaned_store = clean_store(s.store)
-
-        # 使用 upsert 逻辑
-        stmt = sqlite_insert(SalesRecord).values(
+        values.append(dict(
             month=month,
             receipt=s.receipt,
             src_order=s.src_order,
@@ -57,26 +61,39 @@ def import_sales_to_db(
             tag=tag,
             original_store=cleaned_store,
             original_date=s.sale_date,
-        ).on_conflict_do_update(
-            index_elements=["month", "receipt", "store", "sale_date", "barcode", "amount"],
-            set_={
-                "product_name": s.product_name,
-                "qty": s.qty,
-                "unit_price": s.unit_price,
-                "salesperson": s.salesperson,
-                "is_return": s.is_return,
-                "is_online": s.is_online,
-                "tag": tag,
-            }
-        )
-
-        db.execute(stmt)
+            extra=(s.raw or None),  # 源 Excel 全字段留底；空则存 None（T6.2）
+        ))
+        if len(values) >= BATCH:
+            _bulk_upsert(db, values)
+            values = []
+    if values:
+        _bulk_upsert(db, values)
 
     db.commit()
 
     # 统计实际记录数
     actual_count = db.query(SalesRecord).filter(SalesRecord.month == month).count()
     return {"total": len(sales), "db_count": actual_count}
+
+
+def _bulk_upsert(db: Session, values: List[dict]) -> None:
+    """多行批量 upsert：当批内出现同唯一键（小票+门店+日期+条码+金额）时，后写覆盖前写。
+
+    DELETE-then-insert 已保证跨文件无冲突；此处 on_conflict 仅处理「同文件内重复行」。
+    """
+    stmt = sqlite_insert(SalesRecord).values(values).on_conflict_do_update(
+        index_elements=["month", "receipt", "store", "sale_date", "barcode", "amount"],
+        set_={
+            "product_name": sqlite_insert(SalesRecord).excluded.product_name,
+            "qty": sqlite_insert(SalesRecord).excluded.qty,
+            "unit_price": sqlite_insert(SalesRecord).excluded.unit_price,
+            "salesperson": sqlite_insert(SalesRecord).excluded.salesperson,
+            "is_return": sqlite_insert(SalesRecord).excluded.is_return,
+            "is_online": sqlite_insert(SalesRecord).excluded.is_online,
+            "tag": sqlite_insert(SalesRecord).excluded.tag,
+        },
+    )
+    db.execute(stmt)
 
 
 def _determine_tag(

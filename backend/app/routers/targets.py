@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from decimal import Decimal
 
 from backend.app.auth import current_user
-from backend.app.db import get_db, MonthlyTarget, Store, User
+from backend.app.db import get_db, MonthlyTarget, Store, User, Month
 from backend.app.schemas import TargetBatch
 
 router = APIRouter(tags=["targets"])
@@ -51,6 +51,10 @@ def create_target(body: TargetCreate, _: User = Depends(current_user), db: Sessi
 
     target = MonthlyTarget(month=body.month, store=body.store, target=body.target)
     db.add(target)
+    # 输入变更：已计算月份的物化结果不再可信，置 stale 让前端提示重算（T5.1）
+    m = db.get(Month, body.month)
+    if m is not None:
+        m.results_stale = True
     db.commit()
     db.refresh(target)
     return target
@@ -77,6 +81,11 @@ def batch_create_targets(month: str, _: User = Depends(current_user), db: Sessio
         db.add(target)
         created.append(store.name)
 
+    # 输入变更：标记该月结果为 stale（T5.1）
+    m = db.get(Month, month)
+    if m is not None:
+        m.results_stale = True
+
     db.commit()
     return {"created": len(created), "stores": created}
 
@@ -90,6 +99,10 @@ def update_target(target_id: int, target_value: Decimal,
         raise HTTPException(status.HTTP_404_NOT_FOUND, "目标不存在")
 
     target.target = target_value
+    # 输入变更：标记该目标所属月份结果为 stale（T5.1）
+    m = db.get(Month, target.month)
+    if m is not None:
+        m.results_stale = True
     db.commit()
     db.refresh(target)
     return target
@@ -102,7 +115,12 @@ def delete_target(target_id: int, _: User = Depends(current_user), db: Session =
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "目标不存在")
 
+    month = target.month
     db.delete(target)
+    # 输入变更：标记该目标所属月份结果为 stale（T5.1）
+    m = db.get(Month, month)
+    if m is not None:
+        m.results_stale = True
     db.commit()
     return {"deleted": target_id}
 
@@ -111,6 +129,10 @@ def delete_target(target_id: int, _: User = Depends(current_user), db: Session =
 def delete_month_targets(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
     """删除整月目标"""
     count = db.query(MonthlyTarget).filter_by(month=month).delete()
+    # 输入变更：标记该月结果为 stale（T5.1）
+    m = db.get(Month, month)
+    if m is not None:
+        m.results_stale = True
     db.commit()
     return {"deleted": count}
 
@@ -132,5 +154,8 @@ def set_targets(month: str, body: TargetBatch,
             db.add(row)
         else:
             row.target = it.target
+    m = db.get(Month, month)
+    if m is not None:
+        m.results_stale = True
     db.commit()
     return {"saved": len(body.items)}

@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from salary_engine.calculator import compute
 from salary_engine.rates import seed_rate_table
-from salary_engine.models import SalesLine, Store
+from salary_engine.models import Product, RateTable, SalesLine, Store
 
 
 def test_basic_commission_lowtemp_highmargin_classA_full(stores, products):
@@ -111,3 +111,105 @@ def test_per_store_achievement_multi_day_same_store(products, stores):
     assert r.breakdown[("高睿", "福景店")]["achievement"] == Decimal("1.1")
     # 2200 × A类低温高毛13% = 286
     assert r.commission_by_person["高睿"] == Decimal("286")
+
+
+def _sl(receipt, store, d, amount, sp="高睿", barcode="B1"):
+    return SalesLine(receipt=receipt, src_order=None, store=store, sale_date=d,
+                     barcode=barcode, product_name="奶", qty=1, amount=Decimal(amount),
+                     unit_price=Decimal(amount), is_return=False, is_online=False,
+                     cashier="", salesperson=sp)
+
+
+def test_c3_duty_days_count_zero_sales_day():
+    # C3：当班天数应取自当班表（含零销售当班日），而非『有销售的天数』。
+    # 本用例为审计反例：6/2 当班但零销售 → 必须计入目标，否则达成率虚高。
+    products = {"B1": Product("B1", "奶", "", "常温奶", Decimal(5), False)}
+    stores = {"福景店": Store("福景店", "1组", "A", "")}
+    targets = {"福景店": Decimal(3000)}
+    rate_table = RateTable(version=1, effective_from=date(2026, 6, 1), rates={
+        ("A", "GE_100", "常温高毛"): Decimal("0.13"),
+        ("A", "LT_70", "常温高毛"): Decimal("0.09"),
+    })
+    sales = [_sl("R1", "福景店", date(2026, 6, 1), 100)]   # 仅 6/1 有销售
+    # 当班表：高睿 6/1 与 6/2 都当班（6/2 零销售）
+    duty = {("福景店", date(2026, 6, 1)): "高睿", ("福景店", date(2026, 6, 2)): "高睿"}
+    res = compute(sales, products, stores, targets, rate_table, "2026-06", 30, duty_override=duty)
+    bd = res.breakdown[("高睿", "福景店")]
+    # 正确：目标=3000/30*2=200，达成=100/200=0.5 → LT_70
+    assert bd["target"] == Decimal(200), f"target={bd['target']}"
+    assert bd["bucket"] == "LT_70", f"bucket={bd['bucket']}"
+
+
+def test_per_line_detail_rows_sum_to_total():
+    products = {"B1": Product("B1", "奶", "", "常温奶", Decimal(5), False)}
+    stores = {"S": Store("S", "1组", "A", "")}
+    targets = {"S": Decimal(1000)}
+    rt = RateTable(version=1, effective_from=date(2026, 6, 1),
+                   rates={("A", "GE_100", "常温高毛"): Decimal("0.13")})
+    sales = [
+        _sl("R1", "S", date(2026, 6, 1), 60),
+        _sl("R1", "S", date(2026, 6, 1), 40),
+        SalesLine(receipt="R2", src_order="R1", store="S", sale_date=date(2026, 6, 1),
+                  barcode="B1", product_name="奶", qty=1, amount=Decimal(-10),
+                  unit_price=Decimal(10), is_return=True, is_online=False,
+                  cashier="", salesperson="高睿"),
+    ]
+    duty = {("S", date(2026, 6, 1)): "高睿"}
+    res = compute(sales, products, stores, targets, rt, "2026-06", 30, duty_override=duty)
+    # 逐行：60×.13 + 40×.13 + (-10)×.13 = 11.70
+    assert sum((d.commission for d in res.details), Decimal(0)) == Decimal("11.70")
+    assert res.commission_by_person["高睿"] == Decimal("11.70")
+    # 匹配退货行带 退货冲抵 标签
+    assert any(d.tag == "退货冲抵" and d.amount == Decimal(-10) for d in res.details)
+
+
+def test_excluded_lines_emit_zero_commission_detailrows():
+    products = {"B1": Product("B1", "奶", "", "常温奶", Decimal(5), False),
+                "B2": Product("B2", "非奶", "", "常温奶", Decimal(5), True)}  # exclude_commission
+    stores = {"S": Store("S", "1组", "A", "")}
+    targets = {"S": Decimal(1000)}
+    rt = RateTable(version=1, effective_from=date(2026, 6, 1),
+                   rates={("A", "GE_100", "常温高毛"): Decimal("0.13")})
+    sales = [
+        _sl("R1", "S", date(2026, 6, 1), 100),                       # 有效
+        _sl("R2", "S", date(2026, 6, 1), 20, barcode="B2"),           # 不计提成
+        _sl("R3", "S", date(2026, 6, 1), 30, barcode="B9"),           # 非乳品（B9 不在 products）
+    ]
+    gift_keys = {("R4", "B1")}
+    sales.append(_sl("R4", "S", date(2026, 6, 1), 50))               # 赠送
+    duty = {("S", date(2026, 6, 1)): "高睿"}
+    res = compute(sales, products, stores, targets, rt, "2026-06", 30,
+                  gift_keys=gift_keys, duty_override=duty)
+    tags = {d.tag for d in res.details}
+    assert {"有效计提", "不计提成", "非乳品", "赠送剔除"} <= tags
+    # 剔除行 0 提成
+    assert all(d.commission == 0 for d in res.details
+               if d.tag in ("不计提成", "非乳品", "赠送剔除"))
+    # 不变量：逐行全覆盖入参
+    assert len(res.details) == len(sales)
+    # 总额仅来自有效计提
+    assert sum((d.commission for d in res.details), Decimal(0)) == Decimal("13.00")
+
+
+def test_h1_cost_only_category_none_excluded_as_nondairy_with_warning():
+    # H1 (ADR-010): cost-only 条码（在 销售成本.xlsx 有、商品信息表 无 → category=None）
+    # 毛利>10% 时旧逻辑会走到 classify_tier(None, margin) 抛 ValueError 崩溃。
+    # 决策：按非乳品排除 + warning「缺分类: <barcode> <name>」，不崩溃。
+    products = {"B1": Product("B1", "成本表奶", "", None, Decimal(5), False)}  # category=None
+    stores = {"S": Store("S", "1组", "A", "")}
+    targets = {"S": Decimal(1000)}
+    rt = RateTable(version=1, effective_from=date(2026, 6, 1),
+                   rates={("A", "GE_100", "常温高毛"): Decimal("0.13")})
+    # 单价10、成本5 → 毛利率(10-5)/10=50% > 10% → 旧逻辑 classify_tier(None, .5) 崩溃
+    sales = [_sl("R1", "S", date(2026, 6, 1), 10)]
+    duty = {("S", date(2026, 6, 1)): "高睿"}
+    res = compute(sales, products, stores, targets, rt, "2026-06", 30, duty_override=duty)
+    # 不崩溃；产出 非乳品 标签的 0 提成 DetailRow
+    rows = [d for d in res.details if d.barcode == "B1"]
+    assert len(rows) == 1, f"expected 1 row for B1, got {len(rows)}: {rows}"
+    assert rows[0].tag == "非乳品"
+    assert rows[0].commission == Decimal(0)
+    # warning：缺分类: <barcode> <name>
+    assert any("缺分类" in w and "B1" in w for w in res.warnings), res.warnings
+    # 不入提成聚合
+    assert res.commission_by_person.get("高睿", Decimal(0)) == Decimal(0)

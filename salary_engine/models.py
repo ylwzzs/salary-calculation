@@ -1,5 +1,5 @@
 """核心数据类。"""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import Optional
@@ -45,6 +45,8 @@ class SalesLine:
     is_online: bool          # 订单渠道 == '线上'
     cashier: str = ""
     salesperson: str = ""    # 营业员名称
+    sales_record_id: int = None  # 源 SalesRecord.id，物化反查用（T2.1）
+    raw: dict = field(default_factory=dict)  # 源 Excel 全字段留底（台账对账用）
 
 
 @dataclass(frozen=True)

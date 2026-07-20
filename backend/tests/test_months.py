@@ -20,3 +20,31 @@ def test_list_months(client):
     r = client.get("/months", headers=h)
     assert r.status_code == 200
     assert any(m["month"] == "2026-06" for m in r.json())
+
+
+def test_reset_clears_detail_and_policy_lock(tmp_path, client, db_session):
+    """/reset 必须清掉 Compute 物化的 Result/DetailRow/Anomaly，并解锁 policy_version_id
+    + 置 results_stale=True。否则读端点返回 PHANTOM 数据，且 /compute 复用旧锁定策略。"""
+    from backend.app.db import Result, DetailRow, Month
+    from backend.tests.test_workflow import _setup_computed_month
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)  # 建 2026-06 已计算月份
+
+    # 前置：已物化 Result/DetailRow 且锁定了 policy_version_id
+    assert db_session.query(Result).filter_by(month="2026-06").count() > 0
+    assert db_session.query(DetailRow).filter_by(month="2026-06").count() > 0
+    assert db_session.get(Month, "2026-06").policy_version_id is not None
+
+    r = client.post("/months/2026-06/reset", headers=h)
+    assert r.status_code == 200, r.text
+
+    db_session.expire_all()
+    # DetailRow / Result 已清空
+    assert db_session.query(DetailRow).filter_by(month="2026-06").count() == 0, "DetailRow 应被清空"
+    assert db_session.query(Result).filter_by(month="2026-06").count() == 0, "Result 应被清空"
+    # policy_version_id 已解锁；status 回到 draft；results_stale=True
+    m = db_session.get(Month, "2026-06")
+    assert m.policy_version_id is None, "policy_version_id 应解锁"
+    assert m.results_stale is True, "results_stale 应为 True"
+    assert m.status == "draft"

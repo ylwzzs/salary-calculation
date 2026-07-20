@@ -32,7 +32,8 @@ class DetailRow:
     rate: Decimal
     amount: Decimal
     commission: Decimal
-    flag: str = ""   # "" | "退货未匹配"
+    tag: str = "有效计提"          # 有效计提/退货冲抵/退货未匹配/赠送剔除/不计提成/非乳品
+    sales_record_id: int = None
 
 
 @dataclass
@@ -56,14 +57,20 @@ def compute(sales_lines, products, stores, targets, rate_table,
     missing_target_stores = set()
 
     # 1) 清洗门店名；剔除赠送；跳过非乳品；拆分销售/退货
-    sales, returns = [], []
+    #    剔除行不再静默丢弃，收集到 excluded 末尾逐行发 0 提成 DetailRow（ADR-008 台账全覆盖）
+    sales, returns, excluded = [], [], []
     for ln in sales_lines:
         ln = replace(ln, store=clean_store(ln.store))  # 仅改门店名，保留其余字段
         if (ln.receipt, ln.barcode) in gift_keys:
-            continue  # 赠送剔除
+            excluded.append((ln, "赠送剔除")); continue
         product = products.get(ln.barcode)
-        if product is None or product.exclude_commission:
-            continue  # 非乳品 或 不计入提成
+        if product is None or product.category is None:
+            excluded.append((ln, "非乳品"))
+            if product is not None and product.category is None:
+                warnings.append(f"缺分类: {ln.barcode} {ln.product_name}")
+            continue
+        if product.exclude_commission:
+            excluded.append((ln, "不计提成")); continue
         (returns if ln.is_return else sales).append(ln)
 
     # 2) 按 (receipt, barcode) 聚合销售；精确匹配的退货(src_order+条码命中)并入同组，
@@ -104,6 +111,12 @@ def compute(sales_lines, products, stores, targets, rate_table,
         if p is None:
             continue  # 无当班人：不进聚合，其销售按笔 fallback 计
         ps_sales[(p, s)] += net
+    # 当班天数（含零销售当班日）——修 C3：目标从当班表累加，而非『有销售的天数』。
+    # 否则零销售当班日不会被计入目标 → 目标偏低 → 达成率虚高 → 提成多发。
+    for (s, d) in duty.keys():
+        p = _resolve_duty(duty, s, d, None)
+        if p is None:
+            continue
         tgt = targets.get(s)
         if not tgt:
             missing_target_stores.add(s)
@@ -120,14 +133,11 @@ def compute(sales_lines, products, stores, targets, rate_table,
     comm_store = defaultdict(Decimal)
     ps_commission = defaultdict(Decimal)  # (person, store) -> 提成
 
-    # 正常销售组（扣精确退货后的净额）
+    # 正常销售组：逐行产出 DetailRow（销售 + 精确匹配退货冲抵），Σ = 旧组净额×rate
     for g in groups.values():
         if not g["sales"]:
             continue
-        net = group_net(g)
-        if net == 0:
-            continue
-        s0 = g["sales"][0]  # 代表行（同组门店/日期/商品一致）
+        s0 = g["sales"][0]
         product = products[s0.barcode]
         if product.cost is None:
             warnings.append(f"缺成本: {s0.barcode} {s0.product_name}")
@@ -141,12 +151,26 @@ def compute(sales_lines, products, stores, targets, rate_table,
         sp = _resolve_duty(duty, s0.store, s0.sale_date, s0.salesperson)
         bucket = ps_bucket.get((sp, s0.store), "LT_70")
         rate = lookup_rate(rate_table, store_obj.store_class, bucket, tier)
-        commission = net * rate
-        details.append(DetailRow(s0.store, s0.sale_date, sp, s0.barcode, s0.product_name,
-                                 tier, store_obj.store_class, bucket, rate, net, commission))
-        comm_person[sp] += commission
-        comm_store[s0.store] += commission
-        ps_commission[(sp, s0.store)] += commission
+        # 逐行：销售
+        for s in g["sales"]:
+            commission = s.amount * rate
+            details.append(DetailRow(s.store, s.sale_date, sp, s.barcode, s.product_name,
+                                     tier, store_obj.store_class, bucket, rate, s.amount,
+                                     commission, tag="有效计提",
+                                     sales_record_id=getattr(s, "sales_record_id", None)))
+            comm_person[sp] += commission
+            comm_store[s.store] += commission
+            ps_commission[(sp, s.store)] += commission
+        # 逐行：精确匹配退货（冲抵）
+        for r in g["returns"]:
+            commission = r.amount * rate
+            details.append(DetailRow(r.store, r.sale_date, sp, r.barcode, r.product_name,
+                                     tier, store_obj.store_class, bucket, rate, r.amount,
+                                     commission, tag="退货冲抵",
+                                     sales_record_id=getattr(r, "sales_record_id", None)))
+            comm_person[sp] += commission
+            comm_store[r.store] += commission
+            ps_commission[(sp, r.store)] += commission
 
     # 不匹配退货：算到退货当日，按『该人×该店』档比例算负数，标黄
     for r in unmatched_returns:
@@ -163,7 +187,7 @@ def compute(sales_lines, products, stores, targets, rate_table,
         commission = r.amount * rate  # amount 为负 → 提成负
         details.append(DetailRow(r.store, r.sale_date, sp, r.barcode, r.product_name,
                                  tier, store_obj.store_class, bucket, rate, r.amount,
-                                 commission, flag="退货未匹配"))
+                                 commission, tag="退货未匹配"))
         comm_person[sp] += commission
         comm_store[r.store] += commission
         ps_commission[(sp, r.store)] += commission
@@ -183,6 +207,13 @@ def compute(sales_lines, products, stores, targets, rate_table,
             "bucket": achievement_bucket(ach) if tgt else "LT_70",
             "commission": ps_commission.get(key, Decimal(0)),
         }
+
+    # 剔除行：逐行 0 提成明细（台账全覆盖，ADR-008）
+    for ln, tag in excluded:
+        sp = ln.salesperson or ln.cashier or ""
+        details.append(DetailRow(ln.store, ln.sale_date, sp, ln.barcode, ln.product_name,
+                                 "", "", "", Decimal(0), ln.amount, Decimal(0),
+                                 tag=tag, sales_record_id=getattr(ln, "sales_record_id", None)))
 
     return ComputeResult(details=details,
                          commission_by_person=dict(comm_person),

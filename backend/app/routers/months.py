@@ -70,19 +70,26 @@ def reset_month(
     _: User = Depends(current_user),
     db: Session = Depends(get_db)
 ):
-    """重置月份计算（重新计算）"""
+    """重置月份计算（重新计算）。
+
+    清除 Compute 物化的 Result / DetailRow / Anomaly，并解锁 policy_version_id，
+    否则读端点（tier_summary/tier_detail/export）会读到 PHANTOM 残留数据，
+    且后续 /compute 会复用 pre-reset 锁定的策略（H10 守卫恒为 False）。
+    """
     m = db.get(Month, month)
     if not m:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "月份不存在")
-    
-    from backend.app.db import Result, Anomaly
+
+    from backend.app.db import Result, Anomaly, DetailRow
     db.query(Result).filter_by(month=month).delete()
+    db.query(DetailRow).filter_by(month=month).delete()
     db.query(Anomaly).filter_by(month=month).delete()
-    
+
     m.status = "draft"
     m.current_step = "import"
     m.step_data = {}
-    m.rate_version_id = None
-    
+    m.policy_version_id = None  # 解锁策略，让下次 /compute 重新锁定
+    m.results_stale = True
+
     db.commit()
     return {"reset": month}

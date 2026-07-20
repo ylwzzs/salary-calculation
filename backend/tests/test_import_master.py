@@ -98,3 +98,61 @@ def test_import_sales_bulk_within_file_duplicates(db_session):
     r = import_sales_to_db(db, "2026-01", sales, set())
     assert r["total"] == 2
     assert r["db_count"] == 1  # 唯一键折叠后只剩 1 行
+
+
+def test_import_sales_persists_raw_to_extra(db_session):
+    """T6.2: SalesLine.raw 全字段留底 → SalesRecord.extra（台账对账用）
+
+    raw 里的源 Excel 字段（含中文/数字混合）应原样落到 extra JSON 列。
+    """
+    from backend.app.services.sales_importer import import_sales_to_db
+    from backend.app.db import SalesRecord
+    from salary_engine.models import SalesLine
+
+    db = db_session
+    raw = {"some_source_col": "v", "另一列": 7}
+    line = SalesLine(receipt="RAW1", src_order=None, store="S",
+                     sale_date=date(2026, 1, 1), barcode="B", product_name="奶",
+                     qty=1, amount=Decimal(1), unit_price=Decimal(1),
+                     is_return=False, is_online=False, cashier="", salesperson="高睿",
+                     raw=raw)
+    r = import_sales_to_db(db, "2026-01", [line], set())
+    assert r["db_count"] == 1
+
+    rec = db.query(SalesRecord).filter_by(month="2026-01", receipt="RAW1").one()
+    assert rec.extra == {"some_source_col": "v", "另一列": 7}
+
+
+def test_import_sales_empty_raw_persists_none(db_session):
+    """T6.2: raw 为空 → extra 存 None（干净，避免 {} 噪音）。"""
+    from backend.app.services.sales_importer import import_sales_to_db
+    from backend.app.db import SalesRecord
+
+    db = db_session
+    # _line 默认不传 raw → 默认 {} → extra 落 None
+    r = import_sales_to_db(db, "2026-01", _lines(0, 1), set())
+    assert r["db_count"] == 1
+    rec = db.query(SalesRecord).filter_by(month="2026-01", receipt="R0").one()
+    assert rec.extra is None
+
+
+def test_load_sales_from_rows_populates_raw_all_columns():
+    """T6.2: load_sales_from_rows 把全部表头→值塞进 SalesLine.raw（含引擎不需要的列）。"""
+    from salary_engine.importer import load_sales_from_rows
+
+    header = ["序号", "销售时间", "小票单号", "源单号", "机构名称", "国际条码",
+              "商品名称", "数量", "销售金额", "销售单价", "销售方式", "订单渠道",
+              "收银员名称", "备注列A", "额外台账字段"]
+    row = [1, "2026-01-01 10:00", "T001", "", "福景店", "6920001",
+           "低温奶", 2, 20, 10, "销售", "线下", "高睿", "_some_value", "X"]
+    lines = load_sales_from_rows([header, row])
+    assert len(lines) == 1
+    s = lines[0]
+    # 引擎字段照常
+    assert s.receipt == "T001"
+    assert s.barcode == "6920001"
+    # raw 含全部 15 列（含引擎不用到的「备注列A」「额外台账字段」）
+    assert s.raw["备注列A"] == "_some_value"
+    assert s.raw["额外台账字段"] == "X"
+    assert s.raw["小票单号"] == "T001"
+    assert s.raw["销售金额"] == 20

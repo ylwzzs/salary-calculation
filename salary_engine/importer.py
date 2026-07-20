@@ -107,6 +107,8 @@ def load_sales_from_rows(rows):
         src = r[g("源单号")]
         # 真实数据中『营业员名称』恒为空，当班人=收银员（对应『正确收银员』表）
         sp_i = g("收银员名称")
+        # 源 Excel 全字段留底（台账对账用）：全部表头→原值，跳过无表头的列
+        raw = {h[i]: r[i] for i in range(len(h)) if h[i] and i < len(r)}
         lines.append(SalesLine(
             receipt=str(r[g("小票单号")]),
             src_order=(str(src) if src not in (None, "") else None),
@@ -120,6 +122,7 @@ def load_sales_from_rows(rows):
             is_return=(str(r[g("销售方式")]) == "退货"),
             is_online=(str(r[g("订单渠道")]) == "线上"),
             salesperson=(str(r[sp_i]) if (sp_i is not None and r[sp_i] is not None) else ""),
+            raw=raw,
         ))
     return lines
 

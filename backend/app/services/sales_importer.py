@@ -61,6 +61,7 @@ def import_sales_to_db(
             tag=tag,
             original_store=cleaned_store,
             original_date=s.sale_date,
+            extra=(s.raw or None),  # 源 Excel 全字段留底；空则存 None（T6.2）
         ))
         if len(values) >= BATCH:
             _bulk_upsert(db, values)

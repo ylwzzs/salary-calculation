@@ -371,12 +371,18 @@ def do_compute(month: str, _: User = Depends(current_user), db: Session = Depend
                 db.add(Result(month=month, person=person, store=store,
                               sales=v["sales"], target=v["target"], achievement=v["achievement"],
                               bucket=v["bucket"], commission=v["commission"]))
-            for d in result.details:
-                db.add(DetailRow(month=month, sales_record_id=d.sales_record_id, person=d.salesperson,
-                                 store=d.store, sale_date=d.sale_date, barcode=d.barcode,
-                                 product_name=d.product_name, tier=d.tier, bucket=d.bucket, rate=d.rate,
-                                 amount=d.amount, commission=d.commission, tag=d.tag,
-                                 is_transferred=False))  # 占位，T7.1 按 SalesRecord 回填
+            # DetailRow 逐笔物化：bulk_insert_mappings 分批写入（C4 性能优化）。
+            # 9 万行从逐条 ORM add 的 5-15s 降到 <1s；绕过 ORM 默认值，列全显式传。
+            detail_mappings = [{
+                "month": month, "sales_record_id": d.sales_record_id, "person": d.salesperson,
+                "store": d.store, "sale_date": d.sale_date, "barcode": d.barcode,
+                "product_name": d.product_name, "tier": d.tier, "bucket": d.bucket,
+                "rate": d.rate, "amount": d.amount, "commission": d.commission,
+                "tag": d.tag, "is_transferred": False,
+            } for d in result.details]
+            BATCH = 5000
+            for i in range(0, len(detail_mappings), BATCH):
+                db.bulk_insert_mappings(DetailRow, detail_mappings[i:i + BATCH])
             m = db.get(Month, month)
             m.status = "computed"
             m.results_stale = False

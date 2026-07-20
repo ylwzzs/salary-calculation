@@ -41,9 +41,6 @@ def import_sales(month: str, file: UploadFile = File(...),
     from backend.app.services.sales_importer import import_sales_to_db
     from salary_engine.importer import load_sales_xlsx, load_gift_keys_xlsx
 
-    # 清除缓存
-    _clear_sales_cache(m.sales_file)
-
     sales = load_sales_xlsx(m.sales_file)
     gift_keys = set()
     if m.gifts_file:
@@ -69,7 +66,6 @@ def import_gifts(month: str, file: UploadFile = File(...),
         from backend.app.services.sales_importer import import_sales_to_db
         from salary_engine.importer import load_sales_xlsx, load_gift_keys_xlsx
 
-        _clear_sales_cache(m.sales_file)
         sales = load_sales_xlsx(m.sales_file)
         gift_keys = set()
         try:
@@ -101,34 +97,13 @@ class DutyBatch(BaseModel):
     items: list[DutyItem]
 
 
-# 简单缓存，避免重复解析Excel文件
-_sales_cache: dict[str, list] = {}
-
-
-def _load_sales_lines(path: str):
-    if path in _sales_cache:
-        return _sales_cache[path]
-    raw = load_sales_xlsx(path)
-    from salary_engine.models import SalesLine  # noqa: 保留显式引用
-    result = [replace(s, store=clean_store(s.store)) for s in raw]
-    _sales_cache[path] = result
-    return result
-
-
-def _clear_sales_cache(path: str = None):
-    """清除销售数据缓存"""
-    if path:
-        _sales_cache.pop(path, None)
-    else:
-        _sales_cache.clear()
-
-
 @router.post("/months/{month}/infer-duty")
 def infer(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
     m = _get_month(db, month)
-    if not m.sales_file:
+    sales = sales_lines_from_db(db, month)
+    if not sales:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "尚未导入销售流水")
-    duty = infer_duty([s for s in _load_sales_lines(m.sales_file) if not s.is_return])
+    duty = infer_duty([s for s in sales if not s.is_return])
     grid = {}
     for (store, d), p in duty.items():
         ds = d.isoformat() if hasattr(d, "isoformat") else str(d)
@@ -210,7 +185,7 @@ from salary_engine.calculator import compute, clean_store as _clean
 from salary_engine.onduty import infer_duty as _infer
 from backend.app.services.engine_bridge import (
     rates_from_db, products_from_db, stores_from_db, targets_from_db,
-    duty_override_from_db, days_in_month,
+    duty_override_from_db, days_in_month, sales_lines_from_db,
 )
 from backend.app.db import (
     Result, DetailRow, SalaryPolicyVersion,
@@ -226,12 +201,11 @@ def check_anomalies(
 ):
     """预检6类异常并存入数据库"""
     m = _get_month(db, month)
-    if not m.sales_file:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "尚未导入销售流水")
-
     from backend.app.services.anomaly_checker import AnomalyChecker
 
-    sales = _load_sales_lines(m.sales_file)
+    sales = sales_lines_from_db(db, month)
+    if not sales:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "尚未导入销售流水")
 
     checker = AnomalyChecker(db, month)
 

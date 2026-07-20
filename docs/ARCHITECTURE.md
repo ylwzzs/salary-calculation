@@ -100,6 +100,13 @@
 - **影响**：新增 `.github/workflows/mirror-bases.yml`（GITHUB_TOKEN packages:write，定期 + 手动）；`ci.yml` 移除 `xuanyuan.run`、加 `packages: read` + ghcr.io 登录；两个 Dockerfile `FROM ghcr.io/ylwzzs/...`、backend 删 `pip 阿里云`。
 - **决策过程**：CI/CD 镜像源讨论，用户选 ghcr.io（2026-07-20）。
 
+## ADR-012 base 镜像维护挪到专用仓库 ylwzzs/base-images（public，所有项目共用）✅
+
+- **决策**：base 镜像的 mirror 工作流从 salary-calculation **挪到专用仓库 `ylwzzs/base-images`**（public）；`ghcr.io/ylwzzs/{python,node,nginx}` 设为 **public**，ylwzzs 名下所有项目匿名共用。salary-calculation 删除自己的 `mirror-bases.yml`（只作消费方），`ci.yml` 仍从 `ghcr.io/ylwzzs/*` 拉。
+- **理由（取代 ADR-011 里"mirror 放本仓库"的安排）**：解耦——base 镜像基础设施与具体应用仓库分离；任一项目删/归档不影响其他项目；新项目 `FROM ghcr.io/ylwzzs/...` 即可，零配置。public 因为这些只是 Docker Hub 公开镜像的副本，无密钥。
+- **维护**：`base-images` 仓库每周自动刷新 + 手动触发；加新 base 镜像编辑其 workflow 的 `for img in ...` 列表。首次使用前去该仓库 Actions 手动跑一次播种。
+- **决策过程**：用户在 CI 镜像源讨论后要求"设公共 + 搬专用库"（2026-07-20）。
+
 ---
 
 ## ✅ 本轮确认项（2026-07-19，用户已全部同意）

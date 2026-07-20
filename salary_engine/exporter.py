@@ -1,20 +1,21 @@
-"""导出工资表与明细（结果页两个sheet）。"""
-from collections import defaultdict
-from decimal import Decimal
+"""导出工资表（CLI 结果页 sheet）。
+
+CLI 独立导出（无 DB）：Sheet1 计算结果（来自 result.breakdown），Sheet2 销售明细
+仅表头（CLI 无 SalesRecord）。Web 导出走 backend.app.services.ledger_export，
+不经过此处（H2：删掉了不可达的 db 分支 + 对 backend.db 的硬耦合，H12）。
+"""
 from salary_engine.calculator import ComputeResult
 
 
-def write_excel(result: ComputeResult, out_path: str, month: str = None, db=None):
+def write_excel(result: ComputeResult, out_path: str, month: str = None):
     """用 openpyxl 写两个 sheet：
-    Sheet1: 计算结果列表 + 档位提成明细列
-    Sheet2: 全部销售明细
+    Sheet1: 计算结果列表 + 档位提成明细列（来自 result.breakdown）
+    Sheet2: 销售明细表头（CLI 无 SalesRecord，仅表头）
 
-    H12：所有 backend.* 导入延迟到 `if db:` 块内，使 db=None（CLI 独立运行）
-    时完全不触碰 backend 包，保持 salary_engine 自包含可独立使用。
+    month 参数保留兼容签名但 CLI 路径不使用（Web 用 ledger_export）。
     """
     import openpyxl
     from openpyxl.styles import Alignment, Border, Side, Font
-    from salary_engine.margin import gross_margin, classify_tier
 
     wb = openpyxl.Workbook()
 
@@ -22,7 +23,6 @@ def write_excel(result: ComputeResult, out_path: str, month: str = None, db=None
     ws1 = wb.active
     ws1.title = "计算结果"
 
-    # 表头
     headers1 = [
         "员工姓名", "门店", "门店类型", "月目标", "日目标",
         "考勤天数", "实际目标", "销售额", "达标率", "达标档位", "提成金额",
@@ -49,56 +49,13 @@ def write_excel(result: ComputeResult, out_path: str, month: str = None, db=None
         cell.alignment = header_align
         cell.border = thin_border
 
-    # 从数据库获取门店信息、费率表、考勤天数、月度目标
-    store_map = {}      # name -> Store
-    rate_rates = {}     # rate_table.rates: {(cls, bucket, tier): Decimal}
-    duty_days_map = {}  # (person, store) -> 天数
-    target_map = {}     # store -> Decimal(月目标)
-
-    if db:
-        # H12：backend.* 导入全部在 db 分支内（CLI db=None 时不触碰 backend）
-        from backend.app.db import (
-            RateVersion, Month as MonthModel,
-            SalesRecord, Duty, Product, Store, MonthlyTarget,
-        )
-
-        for s in db.query(Store).all():
-            store_map[s.name] = s
-
-        # 加载费率表（与计算时锁定版本一致）
-        m = db.get(MonthModel, month)
-        if m and m.rate_version_id:
-            rv = db.get(RateVersion, m.rate_version_id)
-        else:
-            rv = db.query(RateVersion).filter_by(is_current=True).first()
-        if rv and rv.rates:
-            for cls, by_bucket in rv.rates.items():
-                for bucket, by_tier in by_bucket.items():
-                    for tier, pct in by_tier.items():
-                        rate_rates[(cls, bucket, tier)] = Decimal(str(pct))
-
-        # 统计每个 (person, store) 的出勤天数
-        for d in db.query(Duty).filter_by(month=month).all():
-            key = (d.salesperson, d.store)
-            duty_days_map[key] = duty_days_map.get(key, 0) + 1
-
-        # 月度目标
-        for t in db.query(MonthlyTarget).filter_by(month=month).all():
-            target_map[t.store] = Decimal(t.target)
-
-        # H12：engine_bridge 也是 backend 模块，仅 db 时导入；CLI 走 30 天默认
-        from backend.app.services.engine_bridge import days_in_month as _dim
-        total_days = _dim(month) if month else 30
-    else:
-        total_days = 30
-
+    # CLI 无 DB：门店类型/考勤/目标等列走 build_rows_from_breakdown 内置默认
+    total_days = 30
     tier_names = ["常温高毛", "常温低毛", "低温高毛", "低温低毛", "特价"]
 
-    # 构建行数据：按 person 分组，每个 person 下按 store 排序
-    # result.breakdown: {(person, store): {sales, target, achievement, bucket, commission}}
     from salary_engine.exporter_helpers import build_rows_from_breakdown
     rows_data = build_rows_from_breakdown(
-        result, store_map, rate_rates, duty_days_map, target_map, total_days, tier_names
+        result, {}, {}, {}, {}, total_days, tier_names
     )
 
     # 写入行并合并同员工单元格
@@ -107,7 +64,6 @@ def write_excel(result: ComputeResult, out_path: str, month: str = None, db=None
         start_row = row_idx
         for sd in stores_data:
             ws1.append(sd)
-            # 设置单元格样式
             for col in range(1, len(headers1) + 1):
                 cell = ws1.cell(row=row_idx, column=col)
                 cell.border = thin_border
@@ -132,7 +88,7 @@ def write_excel(result: ComputeResult, out_path: str, month: str = None, db=None
     for col in range(12, len(headers1) + 1):
         ws1.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 12
 
-    # ============ Sheet2: 全部明细 ============
+    # ============ Sheet2: 销售明细（CLI 仅表头） ============
     ws2 = wb.create_sheet("销售明细")
 
     headers2 = [
@@ -145,27 +101,6 @@ def write_excel(result: ComputeResult, out_path: str, month: str = None, db=None
         cell.font = header_font
         cell.alignment = header_align
         cell.border = thin_border
-
-    if month and db:
-        from backend.app.db import SalesRecord
-        records = db.query(SalesRecord).filter(SalesRecord.month == month).order_by(
-            SalesRecord.store, SalesRecord.sale_date, SalesRecord.receipt
-        ).all()
-
-        for r in records:
-            ws2.append([
-                r.tag, r.receipt, r.src_order or "", r.store,
-                r.sale_date.isoformat() if r.sale_date else "",
-                r.barcode, r.product_name,
-                round(float(r.unit_price), 2) if r.unit_price else 0,
-                float(r.qty) if r.qty else 0,
-                round(float(r.amount), 2) if r.amount else 0,
-                r.salesperson, r.cashier or "",
-                "是" if r.is_return else "", "是" if r.is_online else "",
-                r.original_store or "",
-                r.original_date.isoformat() if r.original_date else "",
-                r.transfer_reason or "",
-            ])
 
     # 设置列宽
     for col in range(1, len(headers2) + 1):

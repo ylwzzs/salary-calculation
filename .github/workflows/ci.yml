@@ -54,6 +54,12 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # buildx 的 docker-container driver 不继承 daemon 的 registry-mirrors，
+          # 必须单独配 buildkit 镜像源，否则国内拉 Docker Hub base 镜像超时
+          config-inline: |
+            [registry."docker.io"]
+              mirrors = ["caj9ik14016wep.xuanyuan.run"]
 
       - name: Build & Push Backend
         uses: docker/build-push-action@v6
@@ -84,6 +90,12 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # buildx 的 docker-container driver 不继承 daemon 的 registry-mirrors，
+          # 必须单独配 buildkit 镜像源，否则国内拉 Docker Hub base 镜像超时
+          config-inline: |
+            [registry."docker.io"]
+              mirrors = ["caj9ik14016wep.xuanyuan.run"]
 
       - name: Build & Push Frontend
         uses: docker/build-push-action@v6

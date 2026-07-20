@@ -510,16 +510,32 @@ def tier_summary(month: str, store: str, person: str,
 import tempfile
 import os as _os
 from fastapi import Response
-from salary_engine.exporter import write_excel
 
 
 @router.get("/months/{month}/export")
 def export(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
-    result = _run_compute(db, month)   # 重跑得到完整明细
+    """导出逐笔提成台账（T7.1）：读物化 DetailRow JOIN SalesRecord，零重算（治 R1）。
+    每条导入记录 = 台账一行；含去向标签 + 档位/比例/提成 + 调班信息 + 源 extra 全字段。
+    要点：不调用 _run_compute；调班信息以 SalesRecord.original_store 为真值源派生。
+    """
+    from sqlalchemy import text
+    from backend.app.services.ledger_export import write_ledger_excel
+
+    rows = db.execute(text("""
+        SELECT d.person, d.store, d.sale_date, d.barcode, d.product_name,
+               d.tier, d.bucket, d.rate, d.amount, d.commission, d.tag,
+               s.receipt, s.src_order, s.qty, s.unit_price, s.salesperson, s.cashier,
+               s.is_return, s.is_online,
+               s.original_store, s.original_date, s.transfer_reason, s.extra
+        FROM detail_rows d JOIN sales_records s ON d.sales_record_id = s.id
+        WHERE d.month = :m
+        ORDER BY d.person, d.store, d.sale_date
+    """), {"m": month}).mappings().all()
+
     fd, path = tempfile.mkstemp(suffix=".xlsx")
     _os.close(fd)
     try:
-        write_excel(result, path, month=month, db=db)
+        write_ledger_excel([dict(r) for r in rows], path, month)
         with open(path, "rb") as f:
             data = f.read()
     finally:

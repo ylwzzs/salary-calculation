@@ -8,10 +8,12 @@ def write_excel(result: ComputeResult, out_path: str, month: str = None, db=None
     """用 openpyxl 写两个 sheet：
     Sheet1: 计算结果列表 + 档位提成明细列
     Sheet2: 全部销售明细
+
+    H12：所有 backend.* 导入延迟到 `if db:` 块内，使 db=None（CLI 独立运行）
+    时完全不触碰 backend 包，保持 salary_engine 自包含可独立使用。
     """
     import openpyxl
     from openpyxl.styles import Alignment, Border, Side, Font
-    from backend.app.db import SalesRecord, Duty, Product, Store, MonthlyTarget
     from salary_engine.margin import gross_margin, classify_tier
 
     wb = openpyxl.Workbook()
@@ -54,7 +56,11 @@ def write_excel(result: ComputeResult, out_path: str, month: str = None, db=None
     target_map = {}     # store -> Decimal(月目标)
 
     if db:
-        from backend.app.db import RateVersion, Month as MonthModel
+        # H12：backend.* 导入全部在 db 分支内（CLI db=None 时不触碰 backend）
+        from backend.app.db import (
+            RateVersion, Month as MonthModel,
+            SalesRecord, Duty, Product, Store, MonthlyTarget,
+        )
 
         for s in db.query(Store).all():
             store_map[s.name] = s
@@ -80,8 +86,11 @@ def write_excel(result: ComputeResult, out_path: str, month: str = None, db=None
         for t in db.query(MonthlyTarget).filter_by(month=month).all():
             target_map[t.store] = Decimal(t.target)
 
-    from backend.app.services.engine_bridge import days_in_month as _dim
-    total_days = _dim(month) if month else 30
+        # H12：engine_bridge 也是 backend 模块，仅 db 时导入；CLI 走 30 天默认
+        from backend.app.services.engine_bridge import days_in_month as _dim
+        total_days = _dim(month) if month else 30
+    else:
+        total_days = 30
 
     tier_names = ["常温高毛", "常温低毛", "低温高毛", "低温低毛", "特价"]
 

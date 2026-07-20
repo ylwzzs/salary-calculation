@@ -323,6 +323,60 @@ def test_compute_restores_status_on_failure(tmp_path, client, db_session, monkey
     assert m.status != "computing", "失败后不应卡在 computing"
 
 
+def test_export_reads_materialized_no_recompute(tmp_path, client, monkeypatch):
+    """T7.1：/export 必须读物化 DetailRow JOIN SalesRecord，零 _run_compute 调用（治 R1）。
+    每条导入记录 = 台账一行；去向标签 + 提成金额从物化表直接读取。"""
+    from unittest.mock import MagicMock
+    import backend.app.routers.workflow as workflow
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    spy = MagicMock()
+    monkeypatch.setattr(workflow, "_run_compute", spy)
+
+    r = client.get("/months/2026-06/export", headers=h)
+    assert r.status_code == 200, r.text
+    assert spy.call_count == 0, "export 不应触发全量重算（应读物化 DetailRow JOIN SalesRecord）"
+    ct = r.headers.get("content-type", "")
+    assert "spreadsheet" in ct or ct.startswith("application/vnd"), f"bad ct: {ct}"
+    assert len(r.content) > 0, "导出体不应为空"
+
+
+def test_export_ledger_has_tags_and_fields(tmp_path, client):
+    """T7.1：导出台账每条记录一行，含去向标签 + 提成金额 + 全字段（含源 extra）。
+    解析 xlsx，校验表头与至少一行数据带已知 fate 标签。"""
+    import io
+    import openpyxl
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    r = client.get("/months/2026-06/export", headers=h)
+    assert r.status_code == 200, r.text
+
+    wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True)
+    assert "提成台账" in wb.sheetnames, f"sheet names: {wb.sheetnames}"
+    ws = wb["提成台账"]
+    rows = list(ws.iter_rows(values_only=True))
+    assert len(rows) >= 2, f"台账至少表头 + 1 行数据，实际 {len(rows)}"
+    headers = list(rows[0])
+    header_set = set(headers)
+    # 关键列必须存在
+    for required in ("去向标签", "提成金额", "商品档位", "达成档", "提成比例",
+                     "是否调班", "源字段"):
+        assert required in header_set, f"缺少列 {required}: {headers}"
+
+    tag_idx = headers.index("去向标签")
+    comm_idx = headers.index("提成金额")
+    data_rows = rows[1:]
+    tags = {row[tag_idx] for row in data_rows if row[tag_idx]}
+    known_tags = {"有效计提", "退货冲抵", "退货未匹配", "赠送剔除", "不计提成", "非乳品"}
+    assert tags & known_tags, f"无已知 fate 标签: {tags}"
+    # 至少一行有非空提成金额
+    assert any(row[comm_idx] not in (None, 0, 0.0) for row in data_rows), "无提成金额"
+
+
 def test_compute_recompute_preserves_policy_lock(tmp_path, client, db_session):
     """H10：首次 /compute 锁定 policy_version_id；策略变更后再次 /compute 不应覆盖锁定。
     若 do_compute 里 `if m.policy_version_id is None` 守卫被删除，本测试必须失败。"""

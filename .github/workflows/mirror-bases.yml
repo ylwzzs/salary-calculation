@@ -1,0 +1,34 @@
+# 把 Docker Hub 官方 base 镜像镜像到 ghcr.io/ylwzzs/，供 ci.yml 构建时拉取。
+# ghcr.io 是 GitHub 原生 registry，对 GitHub runner 最快、无 Docker Hub 限流。
+# 首次部署：手动跑一次（workflow_dispatch）播种；之后每周自动刷新安全更新。
+name: Mirror base images to ghcr.io
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"   # 每周一 03:17 UTC 刷新
+  workflow_dispatch:        # 手动触发
+
+env:
+  GHCR_NS: ghcr.io/ylwzzs
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Login to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Mirror base images (Docker Hub -> ghcr.io)
+        run: |
+          set -e
+          for img in python:3.12-slim node:22-alpine nginx:alpine; do
+            echo "== pulling $img from Docker Hub =="
+            docker pull "$img"
+            target="$GHCR_NS/$img"
+            docker tag "$img" "$target"
+            docker push "$target"
+            echo "== pushed $target =="
+          done

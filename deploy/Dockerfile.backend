@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -e .
 RUN mkdir -p /app/uploads
 
 ENV SALARY_DB=/data/salary.db
-ENV SALARY_TOKEN_SECRET=change-me-in-production
+# SALARY_TOKEN_SECRET 不固化进镜像（C7）；运行时由 docker-compose 的 .env 注入
 
 EXPOSE 8000
 

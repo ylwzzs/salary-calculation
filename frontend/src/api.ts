@@ -131,7 +131,7 @@ export const workflowApi = {
   compute: (month: string) =>
     http.post<{ details: number; warnings: string[]; total: number }>(`/months/${month}/compute`).then((r) => r.data),
   getResults: (month: string) =>
-    http.get<{ salary: { person: string; commission: number }[]; breakdown: any[] }>(`/months/${month}/results`).then((r) => r.data),
+    http.get<{ salary: { person: string; commission: number }[]; breakdown: any[]; stale: boolean }>(`/months/${month}/results`).then((r) => r.data),
   getSalesDetail: (month: string, store: string, person: string, date: string) =>
     http.get<{ items: {
       id: number; receipt: string; src_order: string | null; store: string; sale_date: string;

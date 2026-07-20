@@ -105,7 +105,15 @@
 - **决策**：base 镜像的 mirror 工作流从 salary-calculation **挪到专用仓库 `ylwzzs/base-images`**（public）；`ghcr.io/ylwzzs/{python,node,nginx}` 设为 **public**，ylwzzs 名下所有项目匿名共用。salary-calculation 删除自己的 `mirror-bases.yml`（只作消费方），`ci.yml` 仍从 `ghcr.io/ylwzzs/*` 拉。
 - **理由（取代 ADR-011 里"mirror 放本仓库"的安排）**：解耦——base 镜像基础设施与具体应用仓库分离；任一项目删/归档不影响其他项目；新项目 `FROM ghcr.io/ylwzzs/...` 即可，零配置。public 因为这些只是 Docker Hub 公开镜像的副本，无密钥。
 - **维护**：`base-images` 仓库每周自动刷新 + 手动触发；加新 base 镜像编辑其 workflow 的 `for img in ...` 列表。首次使用前去该仓库 Actions 手动跑一次播种。
-- **决策过程**：用户在 CI 镜像源讨论后要求"设公共 + 搬专用库"（2026-07-20）。
+- **决策过程**：用户在 CI 镜像源讨论后要求“设公共 + 搬专用库”（2026-07-20）。
+
+## ADR-013 构建搬回国内（单独构建机 + 国内镜像仓库），取代美国构建 ✅
+
+- **决策**：废弃 ADR-011 的“美国 GitHub runner 构建”。改为：**国内构建机**（天翼云 ECS 上跑 self-hosted GitHub Actions runner）构建镜像 → push 到**国内镜像仓库**（天翼云 SWR，in-region）→ **部署机只 pull**（in-region）+ up。base 镜像走国内镜像源。
+- **背景**：ADR-011 的美国构建把大镜像（backend ~800MB，含 pandas/numpy/pymupdf）**跨境推天翼云**，buildx 在 `#16 exporting to image` 必卡（两次实测都卡死），不可靠；本地在部署机上 build 又有 OOM/抢资源风险影响生产稳定。
+- **理由（选国内构建机+仓库）**：国内构建→国内仓库是 **in-region，无跨境**，快且稳（国内生产项目标配）；部署机只 pull 不 build，**生产稳定不受构建影响**；回滚快（pull 旧 tag）。天翼云 SWR 在构建机也在天翼云时是同云 in-region，可用。
+- **影响**：需一台国内构建 ECS（小规格，跑 self-hosted runner + Docker）；`ci.yml` 改 `runs-on: self-hosted` + 国内源；Dockerfile 改国内镜像源（阿里云 apt/PyPI、npmmirror npm）；`CI-CD-STANDARD.md` 改为“国内构建”版；天翼云 SWR 保留。
+- **决策过程**：美国构建两次卡死在 exporting to image 后，用户选“国内构建机+仓库”（2026-07-20）。
 
 ---
 

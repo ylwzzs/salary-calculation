@@ -133,7 +133,9 @@ def compute(sales_lines, products, stores, targets, rate_table,
     comm_store = defaultdict(Decimal)
     ps_commission = defaultdict(Decimal)  # (person, store) -> 提成
 
-    # 正常销售组：逐行产出 DetailRow（销售 + 精确匹配退货冲抵），Σ = 旧组净额×rate
+    # 正常销售组：逐行产出 DetailRow（销售 + 精确匹配退货冲抵）。
+    # C2：tier/rate 按每行自己的单价算（规格 §2.3「按每笔实际成交判定」），
+    #     不再用首行 s0 的档；bucket 仍组级（人×店达成档，与单笔无关）。
     for g in groups.values():
         if not g["sales"]:
             continue
@@ -146,13 +148,13 @@ def compute(sales_lines, products, stores, targets, rate_table,
         if store_obj is None:
             warnings.append(f"未知门店: {s0.store}")
             continue
-        margin = gross_margin(s0.unit_price, product.cost)
-        tier = classify_tier(product.category, margin)
         sp = _resolve_duty(duty, s0.store, s0.sale_date, s0.salesperson)
         bucket = ps_bucket.get((sp, s0.store), "LT_70")
-        rate = lookup_rate(rate_table, store_obj.store_class, bucket, tier)
-        # 逐行：销售
+        # 逐行：销售（每行按自己的 unit_price 算 tier/rate）
         for s in g["sales"]:
+            margin = gross_margin(s.unit_price, product.cost)
+            tier = classify_tier(product.category, margin)
+            rate = lookup_rate(rate_table, store_obj.store_class, bucket, tier)
             commission = s.amount * rate
             details.append(DetailRow(s.store, s.sale_date, sp, s.barcode, s.product_name,
                                      tier, store_obj.store_class, bucket, rate, s.amount,
@@ -161,8 +163,11 @@ def compute(sales_lines, products, stores, targets, rate_table,
             comm_person[sp] += commission
             comm_store[s.store] += commission
             ps_commission[(sp, s.store)] += commission
-        # 逐行：精确匹配退货（冲抵）
+        # 逐行：精确匹配退货（冲抵，按退货行自己的单价算 tier）
         for r in g["returns"]:
+            margin = gross_margin(r.unit_price, product.cost)
+            tier = classify_tier(product.category, margin)
+            rate = lookup_rate(rate_table, store_obj.store_class, bucket, tier)
             commission = r.amount * rate
             details.append(DetailRow(r.store, r.sale_date, sp, r.barcode, r.product_name,
                                      tier, store_obj.store_class, bucket, rate, r.amount,

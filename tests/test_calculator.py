@@ -189,3 +189,27 @@ def test_excluded_lines_emit_zero_commission_detailrows():
     assert len(res.details) == len(sales)
     # 总额仅来自有效计提
     assert sum((d.commission for d in res.details), Decimal(0)) == Decimal("13.00")
+
+
+def test_h1_cost_only_category_none_excluded_as_nondairy_with_warning():
+    # H1 (ADR-010): cost-only 条码（在 销售成本.xlsx 有、商品信息表 无 → category=None）
+    # 毛利>10% 时旧逻辑会走到 classify_tier(None, margin) 抛 ValueError 崩溃。
+    # 决策：按非乳品排除 + warning「缺分类: <barcode> <name>」，不崩溃。
+    products = {"B1": Product("B1", "成本表奶", "", None, Decimal(5), False)}  # category=None
+    stores = {"S": Store("S", "1组", "A", "")}
+    targets = {"S": Decimal(1000)}
+    rt = RateTable(version=1, effective_from=date(2026, 6, 1),
+                   rates={("A", "GE_100", "常温高毛"): Decimal("0.13")})
+    # 单价10、成本5 → 毛利率(10-5)/10=50% > 10% → 旧逻辑 classify_tier(None, .5) 崩溃
+    sales = [_sl("R1", "S", date(2026, 6, 1), 10)]
+    duty = {("S", date(2026, 6, 1)): "高睿"}
+    res = compute(sales, products, stores, targets, rt, "2026-06", 30, duty_override=duty)
+    # 不崩溃；产出 非乳品 标签的 0 提成 DetailRow
+    rows = [d for d in res.details if d.barcode == "B1"]
+    assert len(rows) == 1, f"expected 1 row for B1, got {len(rows)}: {rows}"
+    assert rows[0].tag == "非乳品"
+    assert rows[0].commission == Decimal(0)
+    # warning：缺分类: <barcode> <name>
+    assert any("缺分类" in w and "B1" in w for w in res.warnings), res.warnings
+    # 不入提成聚合
+    assert res.commission_by_person.get("高睿", Decimal(0)) == Decimal(0)

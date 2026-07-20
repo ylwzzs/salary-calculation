@@ -64,8 +64,11 @@ def compute(sales_lines, products, stores, targets, rate_table,
         if (ln.receipt, ln.barcode) in gift_keys:
             excluded.append((ln, "赠送剔除")); continue
         product = products.get(ln.barcode)
-        if product is None:
-            excluded.append((ln, "非乳品")); continue
+        if product is None or product.category is None:
+            excluded.append((ln, "非乳品"))
+            if product is not None and product.category is None:
+                warnings.append(f"缺分类: {ln.barcode} {ln.product_name}")
+            continue
         if product.exclude_commission:
             excluded.append((ln, "不计提成")); continue
         (returns if ln.is_return else sales).append(ln)

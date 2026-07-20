@@ -356,8 +356,8 @@ def test_export_ledger_has_tags_and_fields(tmp_path, client):
     assert r.status_code == 200, r.text
 
     wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True)
-    assert "提成台账" in wb.sheetnames, f"sheet names: {wb.sheetnames}"
-    ws = wb["提成台账"]
+    assert "提成台账-2026-06" in wb.sheetnames, f"sheet names: {wb.sheetnames}"
+    ws = wb["提成台账-2026-06"]
     rows = list(ws.iter_rows(values_only=True))
     assert len(rows) >= 2, f"台账至少表头 + 1 行数据，实际 {len(rows)}"
     headers = list(rows[0])
@@ -375,6 +375,41 @@ def test_export_ledger_has_tags_and_fields(tmp_path, client):
     assert tags & known_tags, f"无已知 fate 标签: {tags}"
     # 至少一行有非空提成金额
     assert any(row[comm_idx] not in (None, 0, 0.0) for row in data_rows), "无提成金额"
+
+
+def test_export_ledger_shows_transfer(tmp_path, client, db_session):
+    """T7.1：是否调班 列由 SalesRecord.original_store 派生（不依赖 DetailRow.is_transferred 占位）。
+    直接把一条 SalesRecord 的 original_store/original_date 改非空（等价于 transfer_sales 的落库效果），
+    再导出，台账应至少一行显示 是否调班=="是" 且 原门店 非空。"""
+    import io
+    from datetime import date as _date
+    import openpyxl
+    from backend.app.db import SalesRecord
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    # 取一条已物化的 SalesRecord，直接打上调班标记（模拟 transfer_sales 的写库效果）
+    rec = db_session.query(SalesRecord).filter_by(month="2026-06").first()
+    assert rec is not None, "应有已导入的销售记录"
+    rec.original_store = "老门店"
+    rec.original_date = _date(2026, 5, 31)
+    db_session.commit()
+
+    r = client.get("/months/2026-06/export", headers=h)
+    assert r.status_code == 200, r.text
+
+    wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True)
+    ws = wb["提成台账-2026-06"]
+    rows = list(ws.iter_rows(values_only=True))
+    headers = list(rows[0])
+    transfer_idx = headers.index("是否调班")
+    orig_store_idx = headers.index("原门店")
+
+    # 至少一行：是否调班=="是" 且 原门店=="老门店"
+    matched = [row for row in rows[1:]
+               if row[transfer_idx] == "是" and row[orig_store_idx] == "老门店"]
+    assert matched, "调班行未在台账正确渲染（是否调班=是 + 原门店 populated）"
 
 
 def test_compute_recompute_preserves_policy_lock(tmp_path, client, db_session):

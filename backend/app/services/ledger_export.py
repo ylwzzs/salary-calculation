@@ -62,6 +62,8 @@ def _fmt(v, key):
         return v.isoformat()
     if isinstance(v, Decimal):
         return float(v)
+    if isinstance(v, bool):
+        return "是" if v else ""
     return v
 
 
@@ -80,7 +82,7 @@ def write_ledger_excel(rows, path, month):
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "提成台账"
+    ws.title = f"提成台账-{month}"
 
     # 表头
     headers = [h for h, _ in _COLUMNS]

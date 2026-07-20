@@ -23,34 +23,34 @@ app.include_router(auth_router.router)
 seed_admin()
 
 
-def seed_rate_table():
-    from sqlalchemy.orm import Session
-    from backend.app.db import SessionLocal, RateVersion
+def seed_salary_policy():
+    """首启若无 SalaryPolicyVersion，种 v1（单一真值源，ADR-006/009）。
+    内容来自引擎种子 seed_rate_table：commission_rates 存百分数（÷100 在 engine_bridge 边界）。"""
+    from backend.app.db import SessionLocal, SalaryPolicyVersion
     from salary_engine.rates import seed_rate_table as _seed
     db = SessionLocal()
     try:
-        if not db.query(RateVersion).first():
-            rt = _seed()  # 引擎种子
-            nested = {}
-            for (cls, bucket, tier), pct in rt.rates.items():
-                nested.setdefault(cls, {}).setdefault(bucket, {})[tier] = str(pct)
-            db.add(RateVersion(version=1, effective_from=rt.effective_from,
-                               is_current=True, rates=nested))
+        if not db.query(SalaryPolicyVersion).first():
+            rt = _seed()
+            cr = {}
+            for (cls, bucket, tier), frac in rt.rates.items():
+                cr.setdefault(cls, {}).setdefault(bucket, {})[tier] = str(int(frac * 100))
+            db.add(SalaryPolicyVersion(
+                version=1, effective_from=rt.effective_from, is_current=True,
+                content={"margin_rules": {}, "commission_rates": cr},
+                note="首启种子（来自引擎 seed_rate_table）", created_by="system"))
             db.commit()
     finally:
         db.close()
 
 
-seed_rate_table()
+seed_salary_policy()
 
 from backend.app.routers import products as products_router
 app.include_router(products_router.router)
 
 from backend.app.routers import stores as stores_router
 app.include_router(stores_router.router)
-
-from backend.app.routers import rates as rates_router
-app.include_router(rates_router.router)
 
 from backend.app.routers import targets as targets_router
 app.include_router(targets_router.router)

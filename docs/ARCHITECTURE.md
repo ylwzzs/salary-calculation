@@ -91,6 +91,15 @@
 - **影响**：`calculator` 过滤增加 `product.category is None → 非乳品 + 缺分类 warning`；真奶（如低温酸奶）在信息表补全前被排除（少付），靠 warning 提示。
 - **决策过程**：T8.1 真实数据验证中发现（审计 H1 在真实数据触发），按铁律 2 停下报用户；用户选 A（2026-07-20）。
 
+## ADR-011 CI 基础镜像走 ghcr.io，移除美国 runner 上的反向国内镜像 ✅
+
+- **决策**：GitHub Actions（美国 runner）构建时，base 镜像（python/node/nginx）从 **`ghcr.io/ylwzzs/`** 拉（由单独的 `mirror-bases` 工作流从 Docker Hub 镜像过去）；**移除**帮倒忙的 `xuanyuan.run` Docker 镜像配置和 backend Dockerfile 的 `pip 阿里云源`（这俩让美国 runner 把流量绕到国内，更慢更不稳）；PyPI/npm 用默认源（美国境内可达且快）。最终镜像仍推天翼云。
+- **背景**：CI 跑在美国 runner，base 镜像走第三方 `xuanyuan.run`（不稳）+ Docker Hub 对 GitHub 共享 IP 匿名限流（100/6h）→ 经常拉取失败；pip 阿里云 在美国 runner 上是"反向加速"。推镜像到天翼云是唯一保留的跨境跳（推比拉宽容，可重试）。
+- **备选**：(B) Docker Hub 认证——更简单、零镜像维护；(C) 国内构建——要配国内镜像 + 开机器。用户选 ghcr.io。
+- **理由（选 ghcr.io）**：GitHub 原生 registry，对美国 runner 最快、**无限流**；`mirror-bases` 一次性播种 + 定期刷新安全更新。代价：需镜像 3 个 base（一份维护脚本）。
+- **影响**：新增 `.github/workflows/mirror-bases.yml`（GITHUB_TOKEN packages:write，定期 + 手动）；`ci.yml` 移除 `xuanyuan.run`、加 `packages: read` + ghcr.io 登录；两个 Dockerfile `FROM ghcr.io/ylwzzs/...`、backend 删 `pip 阿里云`。
+- **决策过程**：CI/CD 镜像源讨论，用户选 ghcr.io（2026-07-20）。
+
 ---
 
 ## ✅ 本轮确认项（2026-07-19，用户已全部同意）

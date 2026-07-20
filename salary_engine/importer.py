@@ -140,12 +140,17 @@ def load_gift_keys_from_rows(rows):
 
 
 def _xlsx_rows(path, sheet=None):
-    import openpyxl
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    ws = wb[sheet] if sheet else wb[wb.sheetnames[0]]
-    rows = [list(r) for r in ws.iter_rows(values_only=True)]
-    wb.close()
-    return rows
+    """读 xlsx → list[list]。用 python-calamine（Rust 引擎，比 openpyxl 快 ~5x）。
+
+    calamine 与 openpyxl 的两点差异，下游均已兼容（实测 5 个真实 xlsx 端到端
+    解析结果与 openpyxl 完全一致）：
+    - 空单元格：calamine 返回 ''，openpyxl 返回 None（_find_header/_D 容错）
+    - 尾部空行：calamine 自动截断（load_*_from_rows 本就过滤空行）
+    """
+    from python_calamine import CalamineWorkbook
+    wb = CalamineWorkbook.from_path(path)
+    ws = wb.get_sheet_by_name(sheet) if sheet else wb.get_sheet_by_index(0)
+    return [list(r) for r in ws.to_python()]
 
 
 def load_products_xlsx(info_path, cost_path=None):

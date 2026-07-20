@@ -12,7 +12,7 @@ services:
       - ./uploads:/app/uploads
     environment:
       - SALARY_DB=/data/salary.db
-      - SALARY_TOKEN_SECRET=${SALARY_TOKEN_SECRET:-dev-secret-change-me}
+      - SALARY_TOKEN_SECRET=${SALARY_TOKEN_SECRET}
     restart: unless-stopped
 
   frontend:

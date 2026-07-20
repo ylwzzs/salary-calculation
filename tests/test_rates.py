@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from salary_engine.rates import achievement_bucket, lookup_rate, seed_rate_table
+from salary_engine.models import RateTable
 
 
 def test_buckets_boundaries():
@@ -64,3 +65,19 @@ def test_d_lower_buckets_not_following_offset_pattern():
     assert lookup_rate(rt, "D", "80_90", "低温高毛") == Decimal("0.15")  # 非 14
     assert lookup_rate(rt, "D", "70_80", "低温高毛") == Decimal("0.14")  # 非 13
     assert lookup_rate(rt, "D", "LT_70", "低温高毛") == Decimal("0.13")  # 非 12
+
+
+def test_lookup_rate_missing_cell_returns_zero_not_crash():
+    """H6：自定义 RateTable 缺格时不崩，返回 0（对齐 ADR-010 健壮性优先）。
+
+    UI 误删一格比例 → 该格提成 0（不计提），而非整月 compute 因 KeyError 崩 500。
+    特价档仍固定 0.01（不查表）；存在的格正常返回。
+    """
+    rt = RateTable(version=1, effective_from=date(2026, 6, 1),
+                   rates={("A", "GE_100", "低温高毛"): Decimal("0.13")})  # 仅一格，其余缺
+    # 缺格返回 0，不抛 KeyError
+    assert lookup_rate(rt, "A", "LT_70", "低温高毛") == Decimal(0)
+    # 特价档固定 0.01（不查表，不受缺格影响）
+    assert lookup_rate(rt, "A", "LT_70", "特价") == Decimal("0.01")
+    # 存在的格正常
+    assert lookup_rate(rt, "A", "GE_100", "低温高毛") == Decimal("0.13")

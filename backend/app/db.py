@@ -209,3 +209,12 @@ class Anomaly(Base):
     resolution = Column(String(200))
     created_at = Column(DateTime, default=datetime.utcnow)
     resolved_at = Column(DateTime, nullable=True)
+
+
+def mark_all_months_stale(db):
+    """主数据变更：所有月份置 results_stale=True（ADR-014）。
+
+    单 SQL 批量 update；draft 月份本就 stale（status!=computed），无副作用。
+    stores/products/import_master 的增删改端点在 commit 前调用。
+    """
+    db.query(Month).update({Month.results_stale: True})

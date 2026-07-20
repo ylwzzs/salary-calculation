@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.app.auth import current_user
-from backend.app.db import get_db, Product, User
+from backend.app.db import get_db, Product, User, mark_all_months_stale
 from backend.app.schemas import ProductOut, ProductUpsert
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -26,6 +26,7 @@ def upsert_product(barcode: str, body: ProductUpsert,
         db.add(p)
     for f in ("name", "spec", "category", "cost", "exclude_commission"):
         setattr(p, f, getattr(body, f))
+    mark_all_months_stale(db)
     db.commit()
     return p
 
@@ -50,6 +51,7 @@ def patch_product(barcode: str, body: ProductPatch,
     for f, val in update_data.items():
         if f in ("name", "spec", "category", "cost", "exclude_commission"):
             setattr(p, f, val)
+    mark_all_months_stale(db)
     db.commit()
     return p
 
@@ -61,5 +63,6 @@ def delete_product(barcode: str,
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "商品不存在")
     db.delete(p)
+    mark_all_months_stale(db)
     db.commit()
     return {"deleted": barcode}

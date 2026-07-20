@@ -1,7 +1,7 @@
 name: Build & Push to 天翼云镜像仓库
 
-# 国内构建（ADR-013）：test 跑在 GitHub 美国 runner（免费/隔离），
-# build/deploy 跑在国内 self-hosted runner（构建+推天翼云 in-region，无跨境卡顿）。
+# 国内构建（ADR-013）：test 跑 GitHub 美国 runner；build/deploy 跑国内 self-hosted runner。
+# build 用普通 docker build/push（走 daemon：自动用镜像源 + 自动层缓存，不跨境、不卡）。
 
 on:
   push:
@@ -17,25 +17,19 @@ env:
   FRONTEND_IMAGE: salary-frontend
 
 jobs:
-  # ───────── 测试（GitHub 美国 runner，免费隔离）─────────
+  # ───────── 测试（GitHub 美国 runner）─────────
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-
-      - name: Install dependencies
-        run: |
+      - run: |
           pip install -r requirements.txt
           pip install -e ".[dev,web]"
-
-      - name: Run tests
-        run: pytest -q
+      - run: pytest -q
 
   # ───────── 构建 & 推送后端镜像（国内 self-hosted runner）─────────
   build-backend:
@@ -44,34 +38,19 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-
       - name: Login to 天翼云镜像仓库
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          # buildx 的 docker-container driver 不继承 daemon 的 registry-mirrors，
-          # 必须单独配 buildkit 镜像源，否则国内拉 Docker Hub base 镜像超时
-          config-inline: |
-            [registry."docker.io"]
-              mirrors = ["caj9ik14016wep.xuanyuan.run"]
-
       - name: Build & Push Backend
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile.backend
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.BACKEND_IMAGE }}:latest
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.BACKEND_IMAGE }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        env:
+          IMG: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.BACKEND_IMAGE }}
+        run: |
+          docker build -f deploy/Dockerfile.backend -t "$IMG:latest" -t "$IMG:${{ github.sha }}" .
+          docker push "$IMG:latest"
+          docker push "$IMG:${{ github.sha }}"
 
   # ───────── 构建 & 推送前端镜像（国内 self-hosted runner）─────────
   build-frontend:
@@ -80,36 +59,21 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-
       - name: Login to 天翼云镜像仓库
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          # buildx 的 docker-container driver 不继承 daemon 的 registry-mirrors，
-          # 必须单独配 buildkit 镜像源，否则国内拉 Docker Hub base 镜像超时
-          config-inline: |
-            [registry."docker.io"]
-              mirrors = ["caj9ik14016wep.xuanyuan.run"]
-
       - name: Build & Push Frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile.frontend
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.FRONTEND_IMAGE }}:latest
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        env:
+          IMG: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.FRONTEND_IMAGE }}
+        run: |
+          docker build -f deploy/Dockerfile.frontend -t "$IMG:latest" -t "$IMG:${{ github.sha }}" .
+          docker push "$IMG:latest"
+          docker push "$IMG:${{ github.sha }}"
 
-  # ───────── 自动部署（国内 self-hosted runner → SSH 部署机 pull+up）─────────
+  # ───────── 自动部署（SSH 部署机 pull + up）─────────
   deploy:
     needs: [build-backend, build-frontend]
     runs-on: self-hosted

@@ -132,6 +132,8 @@
 - **镜像选择踩坑**：
   - `xuanyuan.run`（`caj9ik14016wep-ghcr.xuanyuan.run`）只代理 **ghcr.io**（容器镜像仓库），**不代理 github.com**（git 仓库）。`git clone https://caj9ik14016wep-ghcr.xuanyuan.run/...` 会报 `repository not found`。
   - `gitclone.com` 可代理 github.com 的 git 仓库，但有缓存延迟（新推送的 branch 可能需要几分钟才可见），rerun 通常能解决。
+  - **gitclone.com 缓存的严重后果（2026-07-22 实测）**：CI 用 `${{ github.sha }}`（GitHub 的值）给镜像打 tag，但 gitclone.com clone 拿到的是缓存的旧 commit 代码 → **镜像 tag 标着新 commit、实际 build 的却是旧代码**，CI 显示 success 但产物错误。本次 entrypoint 部署即因此"成功部署"了无 entrypoint 的旧镜像。
+  - **防护**：clone 后 `git rev-parse HEAD` 比对 `github.sha`，不符则 fail（防静默 build 错代码）；滞后时 rerun 等 gitclone.com 刷新。根本解法待定（换 clone 源 / runner 配代理）。
 
 - **最终方案**：
   - **test** job：跑在 `ubuntu-latest`（GitHub 美国 runner），可直接 `actions/checkout`，无网络问题。

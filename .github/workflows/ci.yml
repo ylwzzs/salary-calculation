@@ -71,11 +71,18 @@ jobs:
     runs-on: self-hosted
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout（gitclone.com 镜像，不依赖直连 GitHub）
+      - name: Checkout（gitclone.com 镜像 + commit 校验防缓存滞后）
         run: |
           cd $RUNNER_TEMP
           REPO_URL="https://gitclone.com/github.com/${{ github.repository }}.git"
           git clone --depth 1 --branch ${{ github.ref_name }} "$REPO_URL" repo
+          cd repo
+          SHA=$(git rev-parse HEAD)
+          echo "clone SHA: $SHA ; 期望: ${{ github.sha }}"
+          if [ "$SHA" != "${{ github.sha }}" ]; then
+            echo "::error::gitclone.com 缓存滞后（clone 到 $SHA 非 ${{ github.sha }}），中止防 build 旧代码；请稍后 rerun"
+            exit 1
+          fi
           echo "REPO_DIR=$RUNNER_TEMP/repo" >> $GITHUB_ENV
       - name: Login to 天翼云镜像仓库
         uses: docker/login-action@v3
@@ -98,11 +105,18 @@ jobs:
     runs-on: self-hosted
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout（gitclone.com 镜像，不依赖直连 GitHub）
+      - name: Checkout（gitclone.com 镜像 + commit 校验防缓存滞后）
         run: |
           cd $RUNNER_TEMP
           REPO_URL="https://gitclone.com/github.com/${{ github.repository }}.git"
           git clone --depth 1 --branch ${{ github.ref_name }} "$REPO_URL" repo
+          cd repo
+          SHA=$(git rev-parse HEAD)
+          echo "clone SHA: $SHA ; 期望: ${{ github.sha }}"
+          if [ "$SHA" != "${{ github.sha }}" ]; then
+            echo "::error::gitclone.com 缓存滞后（clone 到 $SHA 非 ${{ github.sha }}），中止防 build 旧代码；请稍后 rerun"
+            exit 1
+          fi
           echo "REPO_DIR=$RUNNER_TEMP/repo" >> $GITHUB_ENV
       - name: Login to 天翼云镜像仓库
         uses: docker/login-action@v3

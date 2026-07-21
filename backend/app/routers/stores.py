@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.app.auth import current_user
-from backend.app.db import get_db, Store, User
+from backend.app.db import get_db, Store, User, mark_all_months_stale
 from backend.app.schemas import StoreOut, StoreUpsert, BatchClassIn
 
 router = APIRouter(prefix="/stores", tags=["stores"])
@@ -26,6 +26,7 @@ def upsert_store(name: str, body: StoreUpsert,
         db.add(s)
     for f in ("group", "store_class", "supervisor", "exclude_assessment"):
         setattr(s, f, getattr(body, f))
+    mark_all_months_stale(db)
     db.commit()
     return s
 
@@ -49,6 +50,7 @@ def patch_store(name: str, body: StorePatch,
     for f, val in update_data.items():
         if f in ("group", "store_class", "supervisor", "exclude_assessment"):
             setattr(s, f, val)
+    mark_all_months_stale(db)
     db.commit()
     return s
 
@@ -60,6 +62,7 @@ def delete_store(name: str,
     if s is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "门店不存在")
     db.delete(s)
+    mark_all_months_stale(db)
     db.commit()
     return {"deleted": name}
 
@@ -70,5 +73,6 @@ def batch_class(body: BatchClassIn,
     rows = db.query(Store).filter(Store.group == body.group).all()
     for s in rows:
         s.store_class = body.store_class
+    mark_all_months_stale(db)
     db.commit()
     return {"updated": len(rows)}

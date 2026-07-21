@@ -115,6 +115,15 @@
 - **影响**：需一台国内构建 ECS（小规格，跑 self-hosted runner + Docker）；`ci.yml` 改 `runs-on: self-hosted` + 国内源；Dockerfile 改国内镜像源（阿里云 apt/PyPI、npmmirror npm）；`CI-CD-STANDARD.md` 改为“国内构建”版；天翼云 SWR 保留。
 - **决策过程**：美国构建两次卡死在 exporting to image 后，用户选“国内构建机+仓库”（2026-07-20）。
 
+## ADR-014 主数据变更标 stale（治 H1）✅
+
+- **决策**：主数据端点（stores/products/import_master 增删改）成功后，对所有 Month 置 `results_stale=true`。
+- **背景**：维度1审查发现这些端点全不标 stale → 改门店类别 / 商品 category / cost / exclude_commission 后，已计算月份仍 `stale=False`，`/results` 喂陈旧物化结果（违背 ADR-002"物化表与输入同步"前提）。
+- **备选**：(A) 标所有月份（推荐）；(B) 只标当月；(C) 不标。
+- **理由（选 A）**：主数据跨月共用（store_class 决定费率档、category 决定非乳品过滤、cost 决定毛利档），变更影响所有已计算月份；标 stale 仅提示（不强制重算），用户决定是否重算历史。draft 月份本就 stale（status≠computed），标 `results_stale` 无副作用。
+- **影响**：新增 `mark_all_months_stale(db)` helper（单 SQL 批量 update）；stores(4)/products(3)/import_master(2) 共 9 个端点 commit 前调用；TDD 测试覆盖"改主数据→computed 月份 stale"。
+- **状态**：✅ 已确认（2026-07-21，用户审批；标所有月份 + 9 端点）。spec：`docs/superpowers/specs/2026-07-21-master-data-staleness.md`
+
 ---
 
 ## ✅ 本轮确认项（2026-07-19，用户已全部同意）

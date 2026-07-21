@@ -51,7 +51,11 @@ def achievement_bucket(rate: Decimal) -> str:
 
 
 def lookup_rate(table: RateTable, store_class: str, bucket: str, product_tier: str) -> Decimal:
-    """3维查表。特价档固定 1%。"""
+    """3维查表。特价档固定 1%。
+
+    缺格（自定义 RateTable 未填全）返回 0 不崩（H6，对齐 ADR-010 健壮性优先）：
+    UI 误删一格比例 → 该格提成 0，而非整月 compute 因 KeyError 崩。
+    """
     if product_tier == "特价":
         return Decimal("0.01")
-    return table.rates[(store_class, bucket, product_tier)]
+    return table.rates.get((store_class, bucket, product_tier), Decimal(0))

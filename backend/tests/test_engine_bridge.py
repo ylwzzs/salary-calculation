@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from sqlalchemy.orm import Session
-from backend.app.db import Base, Product, Store, MonthlyTarget, RateVersion, Duty, SalaryPolicyVersion
+from backend.app.db import Base, Product, Store, MonthlyTarget, Duty, SalaryPolicyVersion
 from backend.app.services.engine_bridge import (
     rates_from_db, products_from_db, stores_from_db, targets_from_db,
     duty_override_from_db, days_in_month,

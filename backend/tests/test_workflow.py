@@ -442,3 +442,36 @@ def test_compute_recompute_preserves_policy_lock(tmp_path, client, db_session):
     assert m.policy_version_id == v1_id, (
         f"重算不应覆盖已锁定的 policy_version_id: expected v1={v1_id}, got {m.policy_version_id}")
     assert m.policy_version_id != v2_id
+
+
+def test_export_ledger_commission_matches_salary_total(tmp_path, client):
+    """H5 / ADR-008 对账闭环（端到端）：导出台账里计提类标签的 commission 之和
+    == /results 工资总额之和。守护"Σ 台账 == 工资总额"这一核心承诺不被
+    export JOIN 漏行 / DetailRow 物化过滤 / tag 误标悄悄破坏。
+    计提类标签：有效计提 / 退货冲抵 / 退货未匹配（赠送剔除/不计提成/非乳品 = 0）。"""
+    import io
+    import openpyxl
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    # /results 工资总额
+    salary_total = sum(
+        x["commission"] for x in
+        client.get("/months/2026-06/results", headers=h).json()["salary"]
+    )
+
+    # /export 台账：计提类标签行 commission 求和
+    r = client.get("/months/2026-06/export", headers=h)
+    wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True)
+    rows = list(wb["提成台账-2026-06"].iter_rows(values_only=True))
+    headers = list(rows[0])
+    tag_idx = headers.index("去向标签")
+    comm_idx = headers.index("提成金额")
+    ledger_total = sum(
+        (row[comm_idx] or 0) for row in rows[1:]
+        if row[tag_idx] in ("有效计提", "退货冲抵", "退货未匹配")
+    )
+
+    assert abs(ledger_total - salary_total) < 0.01, (
+        f"对账闭环失效: 台账计提Σ={ledger_total} != 工资总额Σ={salary_total}")

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Form, UploadFile, File
 from sqlalchemy.orm import Session
 
 from backend.app.auth import current_user
-from backend.app.db import get_db, User
+from backend.app.db import get_db, User, mark_all_months_stale
 from backend.app.services.import_master import upsert_products, upsert_stores
 from salary_engine.importer import load_products_xlsx, load_stores_xlsx
 
@@ -17,6 +17,8 @@ def import_products(info: UploadFile = File(...), cost: UploadFile = File(None),
     cost_path = _save(cost) if cost else None
     products = load_products_xlsx(info_path, cost_path)
     n = upsert_products(db, products)
+    mark_all_months_stale(db)
+    db.commit()
     _clean(info_path, cost_path)
     return {"products": n}
 
@@ -28,6 +30,8 @@ def import_stores(file: UploadFile = File(...), sheet: str = Form(None),
     path = _save(file)
     stores, targets = load_stores_xlsx(path, sheet)
     n = upsert_stores(db, stores, targets, month=month)
+    mark_all_months_stale(db)
+    db.commit()
     _clean(path)
     return {"stores": n}
 

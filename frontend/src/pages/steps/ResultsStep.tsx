@@ -19,6 +19,7 @@ interface Breakdown {
 interface ResultData {
   salary: { person: string; commission: number }[];
   breakdown: Breakdown[];
+  stale?: boolean;
 }
 
 export default function ResultsStep({
@@ -148,6 +149,15 @@ export default function ResultsStep({
       {/* 阶段3: 计算结果 */}
       {phase === "result" && data && (
         <>
+          {data.stale && (
+            <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="text-sm">输入数据已变更，当前结果可能过期。建议
+                <button onClick={compute} className="underline font-medium hover:text-amber-900 ml-0.5">重新计算</button>
+                获取最新结果。
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Button onClick={compute} disabled={busy} variant="outline" size="sm">

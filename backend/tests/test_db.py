@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from backend.app.db import Base, Product, Store, MonthlyTarget, RateVersion, User
+from backend.app.db import Base, Product, Store, MonthlyTarget, User
 
 
 def test_create_and_query_product():

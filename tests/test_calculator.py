@@ -213,3 +213,34 @@ def test_h1_cost_only_category_none_excluded_as_nondairy_with_warning():
     assert any("缺分类" in w and "B1" in w for w in res.warnings), res.warnings
     # 不入提成聚合
     assert res.commission_by_person.get("高睿", Decimal(0)) == Decimal(0)
+
+
+def test_c2_per_line_tier_for_same_receipt_different_price():
+    """C2：同一 (receipt, barcode) 多行若单价不同，每行按自己的毛利率档算提成，
+    而非全部用首行 s0 的档（规格 §2.3「按每笔实际成交判定」）。
+
+    行1 单价6/成本5 → 毛利16.67% → 低温高毛(13%)；行2 单价5.5/成本5 → 毛利9.09% → 特价(1%)。
+    当前 bug：两行都用首行 s0 的 tier(低温高毛) → 行2 误算 5.5×13%=0.715（应 0.055）。
+    """
+    products = {"B1": Product("B1", "奶", "", "低温奶", Decimal(5), False)}
+    stores = {"S": Store("S", "1组", "A", "")}
+    targets = {"S": Decimal("11.5")}  # 日目标≈0.38，业绩11.5 → 达成>>100% → GE_100
+    rt = RateTable(version=1, effective_from=date(2026, 6, 1),
+                   rates={("A", "GE_100", "低温高毛"): Decimal("0.13")})
+    sales = [
+        _sl("R1", "S", date(2026, 6, 1), 6),           # 单价6 → 低温高毛
+        _sl("R1", "S", date(2026, 6, 1), "5.5"),        # 单价5.5 → 特价
+    ]
+    duty = {("S", date(2026, 6, 1)): "高睿"}
+    res = compute(sales, products, stores, targets, rt, "2026-06", 30, duty_override=duty)
+    rows = [d for d in res.details if d.barcode == "B1" and d.tag == "有效计提"]
+    assert len(rows) == 2
+    by_price = {d.amount: d for d in rows}
+    # 行1：6 × 13% = 0.78，低温高毛
+    assert by_price[Decimal("6")].tier == "低温高毛"
+    assert by_price[Decimal("6")].rate == Decimal("0.13")
+    assert by_price[Decimal("6")].commission == Decimal("0.78")
+    # 行2：5.5 × 1% = 0.055，特价（而非首行的低温高毛）
+    assert by_price[Decimal("5.5")].tier == "特价"
+    assert by_price[Decimal("5.5")].rate == Decimal("0.01")
+    assert by_price[Decimal("5.5")].commission == Decimal("0.055")

@@ -49,22 +49,6 @@ class BatchClassIn(BaseModel):
     store_class: str           # 改成 A/B/C/D
 
 
-class RateVersionOut(BaseModel):
-    id: int
-    version: int
-    effective_from: date
-    is_current: bool
-    rates: dict
-
-    class Config:
-        from_attributes = True
-
-
-class RateVersionCreate(BaseModel):
-    effective_from: date
-    rates: dict
-
-
 class TargetItem(BaseModel):
     store: str
     target: Decimal
@@ -79,7 +63,6 @@ class MonthOut(BaseModel):
     status: Optional[str] = None
     sales_file: Optional[str] = None
     gifts_file: Optional[str] = None
-    rate_version_id: Optional[int] = None
     current_step: Optional[str] = None
     step_data: Optional[dict] = None
 

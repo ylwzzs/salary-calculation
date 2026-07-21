@@ -475,3 +475,23 @@ def test_export_ledger_commission_matches_salary_total(tmp_path, client):
 
     assert abs(ledger_total - salary_total) < 0.01, (
         f"对账闭环失效: 台账计提Σ={ledger_total} != 工资总额Σ={salary_total}")
+
+
+def test_master_data_change_marks_computed_month_stale(tmp_path, client, db_session):
+    """H1/ADR-014：改主数据（商品）后，已计算月份 results_stale=True。
+    之前 stores/products/import_master 端点全不标 stale → 喂陈旧物化结果。"""
+    from backend.app.db import Month
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)  # 建 2026-06 computed（stale=False）
+
+    db_session.expire_all()
+    assert db_session.get(Month, "2026-06").results_stale is False  # 起点 stale=False
+
+    # 改一商品（PATCH cost：2→3）
+    r = client.patch("/products/6920001", headers=h, json={"cost": "3"})
+    assert r.status_code == 200, r.text
+
+    db_session.expire_all()
+    assert db_session.get(Month, "2026-06").results_stale is True, (
+        "改商品后 computed 月份应 results_stale=True（ADR-014）")

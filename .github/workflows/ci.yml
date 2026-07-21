@@ -101,19 +101,24 @@ jobs:
           docker push "$IMG:${{ github.sha }}"
 
   # ───────── 自动部署（SSH 部署机 pull + up）─────────
+  # 用原生 ssh 命令替代 appleboy/ssh-action（self-hosted runner 无法从 GitHub 下载 action 二进制）
   deploy:
     needs: [build-backend, build-frontend]
     runs-on: self-hosted
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Deploy to server
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          script: |
-            cd /opt/salary
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            echo "部署完成: $(date)"
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key "${DEPLOY_USER}@${DEPLOY_HOST}" "\
+            cd /opt/salary && \
+            docker compose -f docker-compose.prod.yml pull && \
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans && \
+            echo '部署完成: $(date)'"
+          rm -f ~/.ssh/deploy_key

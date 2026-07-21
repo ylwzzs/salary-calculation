@@ -146,6 +146,19 @@
 - **影响**：`.github/workflows/ci.yml` 完全不依赖 GitHub 直连（除 test job 跑在美国 runner），国内 self-hosted runner 所有步骤可在无 GitHub 访问的环境下完成。
 - **决策过程**：三次 CI 失败后逐步定位（2026-07-21），用户确认走 gitclone.com 镜像 + 原生 ssh 方案。
 
+## ADR-016 backend 容器启动前自动跑迁移（治"漏迁移致生产缺列"）✅
+
+- **决策**：backend 镜像加 `deploy/entrypoint.sh`，启动顺序 = `init_db()` 建库 → 跑 `migrations/0*.py`（幂等）→ `exec uvicorn`。每次容器启动自动保证 schema 到位。
+- **背景**：2026-07-22 生产"目标创建失败"。根因：`months.results_stale`、`sales_records.extra` 在 ORM 有定义但**从未写迁移脚本**；`create_all` 只建新表、不给老表补列；部署流程从不跑迁移 → 生产库（历史 schema）缺这两列 → 读 Month/SalesRecord 报 `no such column` → GET/POST /months、销售流水导入全部 500。
+- **备选**：(B) main.py 应用层启动跑迁移——耦合应用启动、迁移逻辑混入应用；(C) 依赖手动跑——已证明不可靠（本次就漏）。
+- **理由（选 entrypoint）**：与应用解耦；启动前保证 schema 最新；迁移幂等可重入（新库跳过、老库补列）；`init_db()` 先建库，解决"库不存在时迁移脚本 `exit(1)`"的首次部署阻断。
+- **影响**：
+  - 新增 `deploy/entrypoint.sh`（`init_db` + 跑 `migrations/0*.py` + `exec uvicorn`）。
+  - `Dockerfile.backend` 加 `COPY migrations/` + `COPY entrypoint.sh`，`CMD` 改为 entrypoint。
+  - `migrations/002` 的 `DB_PATH` 改读 `SALARY_DB` env（原写死项目根，容器里会改错库），与 003 统一。
+  - 历史已用 003 手动止血生产；本 ADR 让未来部署自动跟上 schema，杜绝同类。
+- **决策过程**：目标创建失败排查（实测生产缺 results_stale/extra 两列）后，用户选"Dockerfile entrypoint 跑迁移"（2026-07-22）。
+
 ## ADR-014 主数据变更标 stale（治 H1）✅
 
 - **决策**：主数据端点（stores/products/import_master 增删改）成功后，对所有 Month 置 `results_stale=true`。

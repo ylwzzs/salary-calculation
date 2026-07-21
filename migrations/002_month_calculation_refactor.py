@@ -10,13 +10,16 @@
   /Users/Duo/Documents/MytechCode/salary_calculation/.venv/bin/python migrations/002_month_calculation_refactor.py
 """
 
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
-# 找到数据库路径
-BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "salary.db"
+# 数据库路径：优先 SALARY_DB（容器/生产），否则项目根 salary.db（本地）
+DB_PATH = Path(
+    os.environ.get("SALARY_DB")
+    or str(Path(__file__).resolve().parent.parent / "salary.db")
+)
 
 
 def main():

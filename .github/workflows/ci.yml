@@ -1,7 +1,26 @@
 name: Build & Push to 天翼云镜像仓库
 
-# 国内构建（ADR-013）：test 跑 GitHub 美国 runner；build/deploy 跑国内 self-hosted runner。
-# build 用普通 docker build/push（走 daemon：自动用镜像源 + 自动层缓存，不跨境、不卡）。
+# ═══════════════════════════════════════════════════════════════
+# CI/CD 流程（ADR-013 + ADR-015）
+#
+# 整体架构：
+#   test (美国 runner) → build (国内 self-hosted) → deploy (国内 self-hosted)
+#
+# 踩坑记录（为什么不用"正常"方案）：
+#   1. actions/checkout 在 self-hosted runner 上失败
+#      → checkout 不遵守 git config url.insteadOf，无法走镜像
+#      → 改用 git clone 通过 gitclone.com 镜像
+#   2. git clone 到工作目录 '.' 失败
+#      → self-hosted runner 工作目录不会在 job 间清空
+#      → 改用 $RUNNER_TEMP/repo
+#   3. appleboy/ssh-action 失败
+#      → 需从 GitHub 下载 drone-ssh 二进制，国内 runner 无法访问
+#      → 改用原生 ssh 命令
+#   4. xuanyuan.run 只代理 ghcr.io，不代理 github.com git 仓库
+#      → git 仓库用 gitclone.com；容器镜像用 ghcr.io/xuanyuan.run
+#
+# 详见 docs/ARCHITECTURE.md ADR-015
+# ═══════════════════════════════════════════════════════════════
 
 on:
   push:
@@ -17,7 +36,7 @@ env:
   FRONTEND_IMAGE: salary-frontend
 
 jobs:
-  # ───────── 测试（GitHub 美国 runner）─────────
+  # ───────── 测试（GitHub 美国 runner，网络无限制）─────────
   test:
     runs-on: ubuntu-latest
     steps:
@@ -45,15 +64,16 @@ jobs:
           npm run build
 
   # ───────── 构建 & 推送后端镜像（国内 self-hosted runner）─────────
+  # 不用 actions/checkout（不遵守 url 重写），改手动 git clone 通过 gitclone.com 镜像
+  # clone 到 $RUNNER_TEMP/repo（工作目录非空会失败），用 GITHUB_ENV 传递路径
   build-backend:
     needs: test
     runs-on: self-hosted
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout（用 gitclone.com 镜像访问 GitHub）
+      - name: Checkout（gitclone.com 镜像，不依赖直连 GitHub）
         run: |
           cd $RUNNER_TEMP
-          # 使用 gitclone.com 镜像加速访问
           REPO_URL="https://gitclone.com/github.com/${{ github.repository }}.git"
           git clone --depth 1 --branch ${{ github.ref_name }} "$REPO_URL" repo
           echo "REPO_DIR=$RUNNER_TEMP/repo" >> $GITHUB_ENV
@@ -78,10 +98,9 @@ jobs:
     runs-on: self-hosted
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout（用 gitclone.com 镜像访问 GitHub）
+      - name: Checkout（gitclone.com 镜像，不依赖直连 GitHub）
         run: |
           cd $RUNNER_TEMP
-          # 使用 gitclone.com 镜像加速访问
           REPO_URL="https://gitclone.com/github.com/${{ github.repository }}.git"
           git clone --depth 1 --branch ${{ github.ref_name }} "$REPO_URL" repo
           echo "REPO_DIR=$RUNNER_TEMP/repo" >> $GITHUB_ENV
@@ -101,7 +120,8 @@ jobs:
           docker push "$IMG:${{ github.sha }}"
 
   # ───────── 自动部署（SSH 部署机 pull + up）─────────
-  # 用原生 ssh 命令替代 appleboy/ssh-action（self-hosted runner 无法从 GitHub 下载 action 二进制）
+  # 不用 appleboy/ssh-action（需下载二进制，国内 runner 无法访问 GitHub）
+  # 改用原生 ssh 命令，无外部依赖
   deploy:
     needs: [build-backend, build-frontend]
     runs-on: self-hosted

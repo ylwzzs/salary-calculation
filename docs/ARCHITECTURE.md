@@ -115,6 +115,37 @@
 - **影响**：需一台国内构建 ECS（小规格，跑 self-hosted runner + Docker）；`ci.yml` 改 `runs-on: self-hosted` + 国内源；Dockerfile 改国内镜像源（阿里云 apt/PyPI、npmmirror npm）；`CI-CD-STANDARD.md` 改为“国内构建”版；天翼云 SWR 保留。
 - **决策过程**：美国构建两次卡死在 exporting to image 后，用户选“国内构建机+仓库”（2026-07-20）。
 
+## ADR-015 国内 self-hosted runner CI/CD 落地方案 ✅
+
+- **决策**：国内 self-hosted runner 上，checkout 用 **gitclone.com 镜像手动 git clone**（替代 `actions/checkout`），deploy 用**原生 ssh 命令**（替代 `appleboy/ssh-action`）。
+- **背景**：国内构建机（ADR-013）的 self-hosted runner **无法直接访问 github.com**（443 端口被阻），导致 `actions/checkout` 和 `appleboy/ssh-action` 均失败。需一套完全不依赖直连 GitHub 的 CI/CD 方案。
+- **踩坑记录**：
+
+  | # | 尝试方案 | 结果 | 根因 |
+  |---|---------|------|------|
+  | 1 | `actions/checkout@v4` + `git config url.insteadOf` 改写到 xuanyuan.run | ❌ checkout 失败 | `actions/checkout` 是 GitHub Action，有自己的 checkout 逻辑，**不遵守** `git config url.insteadOf` 规则 |
+  | 2 | 手动 `git clone` 到工作目录 `.` | ❌ `destination path '.' already exists and is not an empty directory` | self-hosted runner 的工作目录**不会在 job 间清空**（不同于 GitHub-hosted runner），目录非空导致 clone 失败 |
+  | 3 | `git clone` 到 `$RUNNER_TEMP/repo` + `working-directory: ${{ env.REPO_DIR }}` | ✅ 成功 | `RUNNER_TEMP` 是干净的临时目录 |
+  | 4 | `appleboy/ssh-action@v1` 部署 | ❌ `Failed to download drone-ssh-1.8.2-linux-amd64` | ssh-action 需从 GitHub 下载二进制，国内 runner 无法访问 |
+  | 5 | 原生 `ssh -i` 命令部署 | ✅ 成功 | 无外部依赖，self-hosted runner 自带 ssh |
+
+- **镜像选择踩坑**：
+  - `xuanyuan.run`（`caj9ik14016wep-ghcr.xuanyuan.run`）只代理 **ghcr.io**（容器镜像仓库），**不代理 github.com**（git 仓库）。`git clone https://caj9ik14016wep-ghcr.xuanyuan.run/...` 会报 `repository not found`。
+  - `gitclone.com` 可代理 github.com 的 git 仓库，但有缓存延迟（新推送的 branch 可能需要几分钟才可见），rerun 通常能解决。
+
+- **最终方案**：
+  - **test** job：跑在 `ubuntu-latest`（GitHub 美国 runner），可直接 `actions/checkout`，无网络问题。
+  - **build-backend / build-frontend** job：跑在 `self-hosted`（国内 runner）。
+    - checkout：`git clone --depth 1` 通过 `gitclone.com` 镜像，克隆到 `$RUNNER_TEMP/repo`。
+    - build：`working-directory: ${{ env.REPO_DIR }}` 执行 `docker build`。
+    - `docker/login-action` 仍可用（该 action 是 JS 实现，不需要下载二进制，runner 初始化时已从 GitHub 下载）。
+  - **deploy** job：跑在 `self-hosted`（国内 runner）。
+    - 用原生 `ssh -i ~/.ssh/deploy_key` 执行 `docker compose pull && up -d`。
+    - SSH 密钥从 `secrets.DEPLOY_KEY` 写入临时文件，执行后立即 `rm -f` 清理。
+
+- **影响**：`.github/workflows/ci.yml` 完全不依赖 GitHub 直连（除 test job 跑在美国 runner），国内 self-hosted runner 所有步骤可在无 GitHub 访问的环境下完成。
+- **决策过程**：三次 CI 失败后逐步定位（2026-07-21），用户确认走 gitclone.com 镜像 + 原生 ssh 方案。
+
 ## ADR-014 主数据变更标 stale（治 H1）✅
 
 - **决策**：主数据端点（stores/products/import_master 增删改）成功后，对所有 Month 置 `results_stale=true`。

@@ -54,7 +54,9 @@ jobs:
         run: git config --global url."https://caj9ik14016wep-ghcr.xuanyuan.run/".insteadOf "https://github.com/"
       - name: Checkout（手动 clone，利用镜像）
         run: |
-          git clone --depth 1 --branch ${{ github.ref_name }} https://github.com/${{ github.repository }}.git .
+          cd $RUNNER_TEMP
+          git clone --depth 1 --branch ${{ github.ref_name }} https://github.com/${{ github.repository }}.git repo
+          echo "REPO_DIR=$RUNNER_TEMP/repo" >> $GITHUB_ENV
       - name: Login to 天翼云镜像仓库
         uses: docker/login-action@v3
         with:
@@ -62,6 +64,7 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
       - name: Build & Push Backend
+        working-directory: ${{ env.REPO_DIR }}
         env:
           IMG: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.BACKEND_IMAGE }}
         run: |
@@ -79,7 +82,9 @@ jobs:
         run: git config --global url."https://caj9ik14016wep-ghcr.xuanyuan.run/".insteadOf "https://github.com/"
       - name: Checkout（手动 clone，利用镜像）
         run: |
-          git clone --depth 1 --branch ${{ github.ref_name }} https://github.com/${{ github.repository }}.git .
+          cd $RUNNER_TEMP
+          git clone --depth 1 --branch ${{ github.ref_name }} https://github.com/${{ github.repository }}.git repo
+          echo "REPO_DIR=$RUNNER_TEMP/repo" >> $GITHUB_ENV
       - name: Login to 天翼云镜像仓库
         uses: docker/login-action@v3
         with:
@@ -87,6 +92,7 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
       - name: Build & Push Frontend
+        working-directory: ${{ env.REPO_DIR }}
         env:
           IMG: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.FRONTEND_IMAGE }}
         run: |

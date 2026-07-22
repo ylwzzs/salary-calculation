@@ -85,20 +85,22 @@ def test_compute_and_result(tmp_path, client):
     assert any(x["person"] == "高睿" and abs(x["commission"] - 0.39) < 0.01 for x in res["salary"])
 
 
-def test_excluded_store_not_in_results(tmp_path, client, db_session):
-    """不计考核的店（exclude_assessment=True）不参与计算，不出现在 results。"""
-    from backend.app.db import Store
+def test_excluded_store_not_in_results_but_in_ledger(tmp_path, client, db_session):
+    """不计考核的店：不进 results 汇总，但台账 DetailRow 含它（标不计考核、0 提成）。ADR-017"""
+    from backend.app.db import Store, DetailRow
     h = auth_header(client)
     _setup_computed_month(tmp_path, client, h)  # 福景店 computed（高睿@福景店）
-    # 标记福景店不计考核
     st = db_session.get(Store, "福景店")
     st.exclude_assessment = True
     db_session.commit()
-    # 重算
     client.post("/months/2026-06/compute", headers=h)
     res = client.get("/months/2026-06/results", headers=h).json()
     stores = {x["store"] for x in res["breakdown"]}
-    assert "福景店" not in stores, "不计考核的店不应出现在计算结果"
+    assert "福景店" not in stores, "不计考核的店不进 results 汇总"
+    # 台账（DetailRow）含福景店，标"不计考核"，commission=0
+    rows = db_session.query(DetailRow).filter_by(month="2026-06", store="福景店").all()
+    assert rows and all(r.tag == "不计考核" and r.commission == 0 for r in rows), \
+        "不计考核店的行应在台账（DetailRow），标不计考核且 0 提成"
 
 
 def test_results_and_export(tmp_path, client):

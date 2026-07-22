@@ -279,14 +279,10 @@ def _run_compute(db, month: str):
     sales = sales_lines_from_db(db, month)
     if not sales:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "尚未导入销售流水")
-    # 排除不计考核的门店（exclude_assessment=True）：其销售/当班不进计算
-    excluded = {s.name for s in db.query(Store).filter(Store.exclude_assessment == True).all()}
-    if excluded:
-        sales = [s for s in sales if s.store not in excluded]
-        duty_override = {k: v for k, v in duty_override_from_db(db, month).items()
-                         if k[0] not in excluded}
-    else:
-        duty_override = duty_override_from_db(db, month)
+    # 不计考核店（ADR-017）：销售不过滤（引擎内打标签 commission=0），但排除其当班（不算目标/天数）
+    excluded_stores = {s.name for s in db.query(Store).filter(Store.exclude_assessment == True).all()}
+    duty_override = {k: v for k, v in duty_override_from_db(db, month).items()
+                     if k[0] not in excluded_stores}
     gifts = load_gift_keys_xlsx(m.gifts_file) if m.gifts_file else set()
     # 使用锁定的工资策略版本，若无则用当前激活版本（ADR-009：策略存百分数，边界 ÷100）
     try:
@@ -302,6 +298,7 @@ def _run_compute(db, month: str):
         month=month, days=days_in_month(month),
         gift_keys=gifts,
         duty_override=duty_override,
+        excluded_stores=excluded_stores,
     )
     return result
 

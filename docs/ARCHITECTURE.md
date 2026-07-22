@@ -161,6 +161,18 @@
   - 历史已用 003 手动止血生产；本 ADR 让未来部署自动跟上 schema，杜绝同类。
 - **决策过程**：目标创建失败排查（实测生产缺 results_stale/extra 两列）后，用户选"Dockerfile entrypoint 跑迁移"（2026-07-22）。
 
+## ADR-017 不计考核店：打标签产出 0 提成 DetailRow（撤销过滤）✅
+
+- **决策**：`exclude_assessment=True` 的店**不过滤**，进计算但归入 excluded，产出 DetailRow（`commission=0`、`tag="不计考核"`），不进 results 汇总（salary/breakdown）。
+- **背景**：用户要求台账每条交易记录都打标签。台账 = DetailRow JOIN SalesRecord（ADR-003）。上一轮（6f2fc8e）改为"过滤不计考核店" → 长青店没 DetailRow → 台账缺长青店，与"每行打标签"冲突。
+- **备选**：(A) 计算时打标签（选）；(B) 维持过滤（台账缺不计考核店）；(C) 导入打 tag + 台账改数据源（动 ADR-003，改动面大）。
+- **理由（选 A）**：符合 ADR-008（每条导入行 → DetailRow + 标签）；"不计考核"是提成命运（commission=0），复用引擎既有 excluded 机制（同赠送/非乳品/不计提成）；excluded 行不进 comm_person/ps_sales/breakdown，results 汇总天然不含。
+- **影响**：
+  - `calculator.compute` 加 `excluded_stores` 参数，步骤 1 把 excluded 店的行归 excluded（tag="不计考核"）。
+  - `_run_compute` 撤销 6f2fc8e 的 sales 过滤，改传 `excluded_stores`；duty_override 排除不计考核店（不算目标/天数，避免"缺目标"误报）。
+  - 台账含不计考核店（标不计考核、0 提成），results 不计其提成。
+- **决策过程**：长青店排查 + 台账打标签需求分析后，用户选"计算时打标签"（2026-07-22）。
+
 ## ADR-014 主数据变更标 stale（治 H1）✅
 
 - **决策**：主数据端点（stores/products/import_master 增删改）成功后，对所有 Month 置 `results_stale=true`。

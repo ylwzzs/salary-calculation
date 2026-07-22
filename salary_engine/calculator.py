@@ -46,7 +46,7 @@ class ComputeResult:
 
 
 def compute(sales_lines, products, stores, targets, rate_table,
-            month: str, days: int, gift_keys=None, duty_override=None):
+            month: str, days: int, gift_keys=None, duty_override=None, excluded_stores=None):
     """主流程。返回 ComputeResult。
 
     - gift_keys: {(订单号, 条码)} 赠送集合，命中的销售行剔除。
@@ -58,9 +58,12 @@ def compute(sales_lines, products, stores, targets, rate_table,
 
     # 1) 清洗门店名；剔除赠送；跳过非乳品；拆分销售/退货
     #    剔除行不再静默丢弃，收集到 excluded 末尾逐行发 0 提成 DetailRow（ADR-008 台账全覆盖）
+    excluded_stores = excluded_stores or set()
     sales, returns, excluded = [], [], []
     for ln in sales_lines:
         ln = replace(ln, store=clean_store(ln.store))  # 仅改门店名，保留其余字段
+        if ln.store in excluded_stores:            # 不计考核店（ADR-017）
+            excluded.append((ln, "不计考核")); continue
         if (ln.receipt, ln.barcode) in gift_keys:
             excluded.append((ln, "赠送剔除")); continue
         product = products.get(ln.barcode)

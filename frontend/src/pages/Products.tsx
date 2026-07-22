@@ -41,8 +41,7 @@ export default function Products() {
     toast.info(`正在标记 ${items.length} 个商品...`);
     try {
       for (const bc of items) {
-        const p = rows.find((r) => r.barcode === bc);
-        if (p) await productsApi.upsert({ ...p, exclude_commission: exclude });
+        await productsApi.patch(bc, { exclude_commission: exclude });
       }
       toast.success(`已${exclude ? "标记" : "取消"} ${items.length} 个商品`);
       setSelected(new Set()); load();
@@ -63,6 +62,7 @@ export default function Products() {
 
   const save = async () => {
     if (!form.barcode) { toast.error("条码不能为空"); return; }
+    if (!form.name?.trim()) { toast.error("名称不能为空"); return; }
     await productsApi.upsert({ ...form, exclude_commission: form.exclude_commission ?? false } as Product);
     toast.success("已保存"); setOpen(false); setEdit(null); load();
   };

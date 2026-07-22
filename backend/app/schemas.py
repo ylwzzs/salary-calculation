@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProductOut(BaseModel):
@@ -18,7 +18,7 @@ class ProductOut(BaseModel):
 
 class ProductUpsert(BaseModel):
     barcode: str
-    name: Optional[str] = None
+    name: str = Field(min_length=1, description="商品名称，必填非空（防空档案）")
     spec: Optional[str] = None
     category: Optional[str] = None
     cost: Optional[Decimal] = None

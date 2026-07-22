@@ -85,6 +85,22 @@ def test_compute_and_result(tmp_path, client):
     assert any(x["person"] == "高睿" and abs(x["commission"] - 0.39) < 0.01 for x in res["salary"])
 
 
+def test_excluded_store_not_in_results(tmp_path, client, db_session):
+    """不计考核的店（exclude_assessment=True）不参与计算，不出现在 results。"""
+    from backend.app.db import Store
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)  # 福景店 computed（高睿@福景店）
+    # 标记福景店不计考核
+    st = db_session.get(Store, "福景店")
+    st.exclude_assessment = True
+    db_session.commit()
+    # 重算
+    client.post("/months/2026-06/compute", headers=h)
+    res = client.get("/months/2026-06/results", headers=h).json()
+    stores = {x["store"] for x in res["breakdown"]}
+    assert "福景店" not in stores, "不计考核的店不应出现在计算结果"
+
+
 def test_results_and_export(tmp_path, client):
     h = auth_header(client)
     _setup_computed_month(tmp_path, client, h)  # 复用：已算好 2026-06

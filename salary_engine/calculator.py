@@ -32,7 +32,7 @@ class DetailRow:
     rate: Decimal
     amount: Decimal
     commission: Decimal
-    tag: str = "有效计提"          # 有效计提/退货冲抵/退货未匹配/赠送剔除/不计提成/非乳品/不计考核(ADR-017)
+    tag: str = "有效计提"          # 有效计提/退货/赠送剔除/不计提成/非乳品/不计考核(ADR-017/019)
     sales_record_id: int = None
 
 
@@ -76,40 +76,25 @@ def compute(sales_lines, products, stores, targets, rate_table,
             excluded.append((ln, "不计提成")); continue
         (returns if ln.is_return else sales).append(ln)
 
-    # 被剔除原销售索引（receipt,barcode)->tag：退货匹配用（C4：剔除销售的退货也归剔除）
-    excluded_index = {(ln.receipt, ln.barcode): tag for ln, tag in excluded}
-
-    # 2) 按 (receipt, barcode) 聚合销售；精确匹配的退货(src_order+条码命中)并入同组，
-    #    冲减『该组净额』而非逐行——避免一张小票上同条码多行被重复冲减
-    groups = defaultdict(lambda: {"sales": [], "returns": []})
+    # 2) 按 (receipt, barcode) 聚合销售（退货不再关联原单，统一按负数处理——ADR-019「谁退扣谁」）
+    groups = defaultdict(lambda: {"sales": []})
     for s in sales:
         groups[(s.receipt, s.barcode)]["sales"].append(s)
-    unmatched_returns = []
-    for r in returns:
-        g = groups.get((r.src_order, r.barcode))
-        if r.src_order and g and g["sales"]:
-            g["returns"].append(r)  # 精确匹配：并入原销售组
-        elif (r.src_order, r.barcode) in excluded_index:
-            # C4：原销售被剔除（赠送/非乳品/不计提成/不计考核），退货同命运归剔除，不走未匹配负提成
-            excluded.append((r, excluded_index[(r.src_order, r.barcode)]))
-        else:
-            unmatched_returns.append(r)
 
     # 3) 当班表（用已清洗门店名的线下销售推断；人工 override 由 Web 提供）
     duty = duty_override if duty_override is not None else infer_duty(sales)
 
     def group_net(g):
-        return (sum((s.amount for s in g["sales"]), Decimal(0))
-                + sum((r.amount for r in g["returns"]), Decimal(0)))
+        return sum((s.amount for s in g["sales"]), Decimal(0))
 
-    # 4) 门店×天乳品销售额（达成率用）：各组净额 + 不匹配退货(负)
+    # 4) 门店×天乳品销售额（达成率用）：各组销售净额 + 退货(负)
     daily_sales = defaultdict(Decimal)
     for g in groups.values():
         if not g["sales"]:
             continue
         s0 = g["sales"][0]
         daily_sales[(s0.store, s0.sale_date)] += group_net(g)
-    for r in unmatched_returns:
+    for r in returns:
         daily_sales[(r.store, r.sale_date)] += r.amount  # 负数
 
     # 5) 按「人×店」分别算达成率（规格 §2.4）：每人在每个店各自一个达成档
@@ -142,9 +127,8 @@ def compute(sales_lines, products, stores, targets, rate_table,
     comm_store = defaultdict(Decimal)
     ps_commission = defaultdict(Decimal)  # (person, store) -> 提成
 
-    # 正常销售组：逐行产出 DetailRow（销售 + 精确匹配退货冲抵）。
-    # C2：tier/rate 按每行自己的单价算（规格 §2.3「按每笔实际成交判定」），
-    #     不再用首行 s0 的档；bucket 仍组级（人×店达成档，与单笔无关）。
+    # 正常销售组：逐行产出 DetailRow（有效计提）。
+    # C2：tier/rate 按每行自己的单价算（规格 §2.3「按每笔实际成交判定」）。
     for g in groups.values():
         if not g["sales"]:
             continue
@@ -172,22 +156,9 @@ def compute(sales_lines, products, stores, targets, rate_table,
             comm_person[sp] += commission
             comm_store[s.store] += commission
             ps_commission[(sp, s.store)] += commission
-        # 逐行：精确匹配退货（冲抵，按退货行自己的单价算 tier）
-        for r in g["returns"]:
-            margin = gross_margin(r.unit_price, product.cost)
-            tier = classify_tier(product.category, margin)
-            rate = lookup_rate(rate_table, store_obj.store_class, bucket, tier)
-            commission = r.amount * rate
-            details.append(DetailRow(r.store, r.sale_date, sp, r.barcode, r.product_name,
-                                     tier, store_obj.store_class, bucket, rate, r.amount,
-                                     commission, tag="退货冲抵",
-                                     sales_record_id=getattr(r, "sales_record_id", None)))
-            comm_person[sp] += commission
-            comm_store[r.store] += commission
-            ps_commission[(sp, r.store)] += commission
 
-    # 不匹配退货：算到退货当日，按『该人×该店』档比例算负数，标黄
-    for r in unmatched_returns:
+    # 退货：统一按负数算（ADR-019「谁退扣谁」）——归退货当天当班人+档，amount 负→提成负
+    for r in returns:
         product = products[r.barcode]
         store_obj = stores.get(r.store)
         if store_obj is None or product.cost is None:
@@ -201,7 +172,7 @@ def compute(sales_lines, products, stores, targets, rate_table,
         commission = r.amount * rate  # amount 为负 → 提成负
         details.append(DetailRow(r.store, r.sale_date, sp, r.barcode, r.product_name,
                                  tier, store_obj.store_class, bucket, rate, r.amount,
-                                 commission, tag="退货未匹配",
+                                 commission, tag="退货",
                                  sales_record_id=getattr(r, "sales_record_id", None)))
         comm_person[sp] += commission
         comm_store[r.store] += commission

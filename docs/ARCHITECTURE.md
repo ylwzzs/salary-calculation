@@ -181,6 +181,14 @@
 - **影响**：calculator 步骤 1 后建 `excluded_index`，步骤 2 退货匹配加 elif（原销售在剔除索引→归剔除）；`:193` 补 `sales_record_id`。不修设计口径（未匹配时点、退货 tier 按退货单价，C2）。
 - **决策过程**：退货一正一负审查后，用户选"漏洞1+C4"（2026-07-22）。spec：`docs/superpowers/specs/2026-07-22-return-matching-c4.md`
 
+## ADR-019 退货简化：统一按负数算，不关联原单号（谁退扣谁）✅
+
+- **决策**：退货统一按 amount 负数算（commission=amount×rate，**退货当天当班人**+该人×店档），不再用 src_order 关联原销售做精确匹配；台账标签统一「退货」（删退货冲抵/退货未匹配）。
+- **背景**：原精确匹配退货为 3 目的（达成率净额、提成归原销售当班人、防同单重复冲减）。行政保证「自己出自己退、全单退、金额对称」+ 用户确认「**谁退扣谁**」（退货提成归退货当天当班人），使精确匹配唯一不可替代的作用（归原销售当班人）失效。
+- **理由**：月聚合同人同店下，简化与精确匹配等价（达成率净额一致、提成同人）；消除 src_order 数据依赖（24 行退货未匹配问题消失）；删 C4/精确/未匹配区分，计算大幅简化。
+- **影响**：calculator 删 C4 `excluded_index`、精确匹配（groups returns）、精确退货循环；`group_net` 只 sales；`daily_sales` 含所有 returns；所有 returns 走统一负数逻辑（tag=退货、退货天当班人、sales_record_id）。台账标签「退货」统一。**撤销 ADR-018 的 C4 部分**（简化后无精确/未匹配/C4 区分；漏洞1 在统一逻辑里天然带）。
+- **决策过程**：退货设计讨论，用户确认「谁退扣谁」（2026-07-22）。spec：`docs/superpowers/specs/2026-07-22-return-simplify.md`
+
 ## ADR-014 主数据变更标 stale（治 H1）✅
 
 - **决策**：主数据端点（stores/products/import_master 增删改）成功后，对所有 Month 置 `results_stale=true`。

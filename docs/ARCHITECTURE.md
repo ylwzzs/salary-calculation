@@ -173,6 +173,14 @@
   - 台账含不计考核店（标不计考核、0 提成），results 不计其提成。
 - **决策过程**：长青店排查 + 台账打标签需求分析后，用户选"计算时打标签"（2026-07-22）。
 
+## ADR-018 退货匹配修 C4 + 未匹配 DetailRow 补 sales_record_id ✅
+
+- **决策**：退货匹配加一档——原销售被剔除（赠送/非乳品/不计提成/不计考核）的退货归对应剔除标签（commission=0），不走未匹配负；同时退货未匹配 DetailRow 补 `sales_record_id`。
+- **背景**：审查「退货一正一负」逻辑发现两漏洞：C4（ADR-007 列为后续，赠送等退货多扣提成）+ 退货未匹配 DetailRow 漏 `sales_record_id`（台账 JOIN 缺字段，生产 24 行全 None）。
+- **理由**：剔除销售的退货应同命运（0 提成），不该走未匹配算负；sales_record_id 是台账 JOIN SalesRecord 的键，漏传导致台账不完整。
+- **影响**：calculator 步骤 1 后建 `excluded_index`，步骤 2 退货匹配加 elif（原销售在剔除索引→归剔除）；`:193` 补 `sales_record_id`。不修设计口径（未匹配时点、退货 tier 按退货单价，C2）。
+- **决策过程**：退货一正一负审查后，用户选"漏洞1+C4"（2026-07-22）。spec：`docs/superpowers/specs/2026-07-22-return-matching-c4.md`
+
 ## ADR-014 主数据变更标 stale（治 H1）✅
 
 - **决策**：主数据端点（stores/products/import_master 增删改）成功后，对所有 Month 置 `results_stale=true`。

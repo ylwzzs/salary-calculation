@@ -28,6 +28,25 @@ def test_gift_excluded(products, stores):
     assert result.commission_by_person.get("高睿", Decimal(0)) == Decimal(0)
 
 
+def test_gift_return_excluded_not_unmatched(products, stores):
+    """C4：赠送销售的退货，归赠送剔除（0提成），不走未匹配负提成。"""
+    target = {"福景店": Decimal("100")}
+    sales = [
+        SalesLine("R001", None, "福景店", date(2026, 6, 1), "6920001", "低温奶",
+                  Decimal(1), Decimal(3), Decimal(3), is_return=False, is_online=False, salesperson="高睿"),
+        SalesLine("R002", "R001", "福景店", date(2026, 6, 2), "6920001", "低温奶",
+                  Decimal(-1), Decimal(-3), Decimal(3), is_return=True, is_online=False, salesperson="高睿"),
+    ]
+    gifts = {("R001", "6920001")}  # 原销售 R001 是赠送 → 剔除
+    result = compute(sales, products, stores, target, seed_rate_table(),
+                     month="2026-06", days=30, gift_keys=gifts)
+    tags = [d.tag for d in result.details]
+    assert "退货未匹配" not in tags, "赠送退货不该走未匹配（C4）"
+    gift_rows = [d for d in result.details if d.tag == "赠送剔除" and d.amount < 0]
+    assert gift_rows, "赠送退货应归赠送剔除"
+    assert result.commission_by_person.get("高睿", Decimal(0)) == Decimal(0)
+
+
 def test_return_precise_offset(products, stores):
     # 卖3元后退货3元（同源单号+条码）→ 净0，提成0
     target = {"福景店": Decimal("100")}

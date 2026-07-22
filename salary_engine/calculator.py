@@ -32,7 +32,7 @@ class DetailRow:
     rate: Decimal
     amount: Decimal
     commission: Decimal
-    tag: str = "有效计提"          # 有效计提/退货冲抵/退货未匹配/赠送剔除/不计提成/非乳品
+    tag: str = "有效计提"          # 有效计提/退货冲抵/退货未匹配/赠送剔除/不计提成/非乳品/不计考核(ADR-017)
     sales_record_id: int = None
 
 
@@ -76,6 +76,9 @@ def compute(sales_lines, products, stores, targets, rate_table,
             excluded.append((ln, "不计提成")); continue
         (returns if ln.is_return else sales).append(ln)
 
+    # 被剔除原销售索引（receipt,barcode)->tag：退货匹配用（C4：剔除销售的退货也归剔除）
+    excluded_index = {(ln.receipt, ln.barcode): tag for ln, tag in excluded}
+
     # 2) 按 (receipt, barcode) 聚合销售；精确匹配的退货(src_order+条码命中)并入同组，
     #    冲减『该组净额』而非逐行——避免一张小票上同条码多行被重复冲减
     groups = defaultdict(lambda: {"sales": [], "returns": []})
@@ -86,6 +89,9 @@ def compute(sales_lines, products, stores, targets, rate_table,
         g = groups.get((r.src_order, r.barcode))
         if r.src_order and g and g["sales"]:
             g["returns"].append(r)  # 精确匹配：并入原销售组
+        elif (r.src_order, r.barcode) in excluded_index:
+            # C4：原销售被剔除（赠送/非乳品/不计提成/不计考核），退货同命运归剔除，不走未匹配负提成
+            excluded.append((r, excluded_index[(r.src_order, r.barcode)]))
         else:
             unmatched_returns.append(r)
 
@@ -195,7 +201,8 @@ def compute(sales_lines, products, stores, targets, rate_table,
         commission = r.amount * rate  # amount 为负 → 提成负
         details.append(DetailRow(r.store, r.sale_date, sp, r.barcode, r.product_name,
                                  tier, store_obj.store_class, bucket, rate, r.amount,
-                                 commission, tag="退货未匹配"))
+                                 commission, tag="退货未匹配",
+                                 sales_record_id=getattr(r, "sales_record_id", None)))
         comm_person[sp] += commission
         comm_store[r.store] += commission
         ps_commission[(sp, r.store)] += commission

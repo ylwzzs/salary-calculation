@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, Fragment } from "react";
-import { workflowApi, storesApi, type DutyGrid, type Store } from "../api";
+import { workflowApi, storesApi, targetsApi, type DutyGrid, type Store } from "../api";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import RightDrawer from "./RightDrawer";
 
@@ -56,6 +56,7 @@ export default function ResultTable({ month, data }: ResultTableProps) {
   } | null>(null);
   const [dutyGrid, setDutyGrid] = useState<DutyGrid>({});
   const [storeMap, setStoreMap] = useState<Map<string, Store>>(new Map());
+  const [targetMap, setTargetMap] = useState<Map<string, number>>(new Map());
   const [drawer, setDrawer] = useState<{
     open: boolean;
     title: string;
@@ -68,6 +69,11 @@ export default function ResultTable({ month, data }: ResultTableProps) {
       const map = new Map<string, Store>();
       stores.forEach((s) => map.set(s.name, s));
       setStoreMap(map);
+    }).catch(() => {});
+    targetsApi.list(month).then((ts) => {
+      const map = new Map<string, number>();
+      ts.forEach((t) => map.set(t.store, t.target));
+      setTargetMap(map);
     }).catch(() => {});
   }, [month]);
 
@@ -90,7 +96,8 @@ export default function ResultTable({ month, data }: ResultTableProps) {
     const result: RowSummary[] = [];
     map.forEach((items, key) => {
       const first = items[0];
-      const dailyTarget = first.target / 30;
+      const monthlyTarget = targetMap.get(first.store) ?? 0;  // 门店月目标（目标表）
+      const dailyTarget = monthlyTarget / 30;                  // 日目标 = 门店月目标/30
       const personDates = getPersonDates(first.person, first.store);
       const days = personDates.length || Math.round(first.achievement * 30);
       const store = storeMap.get(first.store);
@@ -98,17 +105,17 @@ export default function ResultTable({ month, data }: ResultTableProps) {
         person: first.person,
         store: first.store,
         storeClass: store?.store_class || "-",
-        target: first.target,
+        target: monthlyTarget,            // "目标"列 = 门店月目标
         dailyTarget,
         days,
-        actualTarget: dailyTarget * days,
+        actualTarget: dailyTarget * days, // "实际目标" = 日目标×当班天数 = 个人分摊目标
         sales: first.sales,
         achievement: first.achievement,
         commission: items.reduce((s, i) => s + i.commission, 0),
       });
     });
     return result;
-  }, [data, dutyGrid]);
+  }, [data, dutyGrid, targetMap]);
 
   const personRows = useMemo(() => {
     const map = new Map<string, RowSummary[]>();

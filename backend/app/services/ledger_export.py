@@ -13,6 +13,7 @@ import json
 from datetime import date as _date
 from decimal import Decimal
 
+from salary_engine.exporter_helpers import _bucket_display
 
 # 列定义：(表头, 取值 key 或派生标记)
 # 顺序即写入顺序；包含全字段审计（去向标签 + 提成 + 调班信息 + 源 extra）
@@ -42,6 +43,59 @@ _COLUMNS = [
     ("调整原因",     "transfer_reason"),
     ("源字段",       "__extra__"),          # SalesRecord.extra JSON dump
 ]
+
+
+_TIERS = ["常温高毛", "常温低毛", "低温高毛", "低温低毛", "特价"]
+
+
+def build_summary_rows(results, tier_rows, store_map, target_map, duty_days_map, days):
+    """从 Result 聚合 + 逐笔行构建 Sheet1「计算结果」行列表（26 列，与 CLI Sheet1 对齐）。
+    排序：person 按总提成降序，store 按提成降序（与 CLI exporter_helpers 一致）。
+    """
+    from collections import defaultdict
+    from decimal import Decimal
+
+    # 5 档聚合：{(person, store, tier): [amount, commission, rate]}
+    tier_agg = {}
+    for r in tier_rows:
+        tier = r.get("tier")
+        if not tier or tier not in _TIERS:
+            continue
+        key = (r["person"], r["store"], tier)
+        if key not in tier_agg:
+            tier_agg[key] = [Decimal(0), Decimal(0), r.get("rate")]
+        tier_agg[key][0] += r.get("amount") or 0
+        tier_agg[key][1] += r.get("commission") or 0
+
+    persons = defaultdict(list)
+    for res in results:
+        persons[res.person].append(res)
+    person_total = {p: sum((r.commission or 0) for r in rs) for p, rs in persons.items()}
+
+    out = []
+    for person in sorted(person_total, key=lambda p: float(person_total[p]), reverse=True):
+        stores_data = sorted(persons[person], key=lambda r: float(r.commission or 0), reverse=True)
+        for res in stores_data:
+            store = res.store
+            store_class = store_map[store].store_class if store in store_map else ""
+            monthly_target = Decimal(target_map.get(store, 0) or 0)
+            daily_target = monthly_target / days if days else Decimal(0)
+            duty = duty_days_map.get((person, store), 0)
+            actual_target = daily_target * duty
+            row = [
+                person, store, store_class,
+                round(float(monthly_target), 2), round(float(daily_target), 2),
+                duty, round(float(actual_target), 2),
+                round(float(res.sales or 0), 2),
+                round(float(res.achievement or 0) * 100, 1),
+                _bucket_display(res.bucket), round(float(res.commission or 0), 2),
+            ]
+            for tier in _TIERS:
+                amount, comm, rate = tier_agg.get((person, store, tier), (Decimal(0), Decimal(0), None))
+                rate_pct = f"{float(rate) * 100:.1f}%" if rate is not None else ""
+                row.extend([round(float(amount), 2), rate_pct, round(float(comm), 2)])
+            out.append(row)
+    return out
 
 
 def _fmt(v, key):

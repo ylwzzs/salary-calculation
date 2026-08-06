@@ -129,37 +129,45 @@ def _fmt(v, key):
     return v
 
 
-def write_ledger_excel(rows, path, month):
-    """把 JOIN 后的明细行写入 xlsx 台账。
+_SUMMARY_HEADERS = [
+    "员工姓名", "门店", "门店类型", "月目标", "日目标", "考勤天数", "实际目标",
+    "销售额", "达标率", "达标档位", "提成金额",
+    "常温高毛_销售", "常温高毛_比例", "常温高毛_提成",
+    "常温低毛_销售", "常温低毛_比例", "常温低毛_提成",
+    "低温高毛_销售", "低温高毛_比例", "低温高毛_提成",
+    "低温低毛_销售", "低温低毛_比例", "低温低毛_提成",
+    "特价_销售", "特价_比例", "特价_提成",
+]
 
-    Args:
-        rows: list[dict]，每项为 DetailRow JOIN SalesRecord 的字段（由路由层 SQL 查出）。
-        path: 输出 xlsx 路径。
-        month: 月份字符串（YYYY-MM），仅用于 sheet title 备注与文件命名参考（不写入单元格）。
-    Returns:
-        None（写盘到 path）。
-    """
+
+def _style_header(ws, ncols):
     import openpyxl
-    from openpyxl.styles import Alignment, Border, Side, Font
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = f"提成台账-{month}"
-
-    # 表头
-    headers = [h for h, _ in _COLUMNS]
-    ws.append(headers)
-
-    header_font = Font(bold=True)
-    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    from openpyxl.styles import Alignment, Border, Font, Side
+    font = Font(bold=True)
+    align = Alignment(horizontal="center", vertical="center", wrap_text=True)
     thin = Border(left=Side(style="thin"), right=Side(style="thin"),
                   top=Side(style="thin"), bottom=Side(style="thin"))
     for cell in ws[1]:
-        cell.font = header_font
-        cell.alignment = header_align
+        cell.font = font
+        cell.alignment = align
         cell.border = thin
+    for col in range(1, ncols + 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 12
 
-    # 数据行
+
+def _write_summary_sheet(ws, summary_rows):
+    ws.append(_SUMMARY_HEADERS)
+    _style_header(ws, len(_SUMMARY_HEADERS))
+    for row in summary_rows:
+        ws.append(row)
+    ws.freeze_panes = "A2"
+
+
+def _write_ledger_sheet(ws, rows):
+    import openpyxl
+    headers = [h for h, _ in _COLUMNS]
+    ws.append(headers)
+    _style_header(ws, len(_COLUMNS))
     for r in rows:
         # 派生：是否调班（original_store 非空 → 调班）
         transferred = bool(r.get("original_store"))
@@ -172,18 +180,42 @@ def write_ledger_excel(rows, path, month):
             else:
                 row_vals.append(_fmt(r.get(key), key))
         ws.append(row_vals)
-
     # 列宽：标签/审计列宽一点
     for idx, (hdr, _) in enumerate(_COLUMNS, start=1):
         if hdr in ("源字段", "调整原因", "商品名称"):
-            width = 32
+            ws.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = 32
         elif hdr in ("去向标签", "商品档位", "达成档", "原门店", "原日期"):
-            width = 14
-        else:
-            width = 12
-        ws.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = width
-
-    # 冻结表头
+            ws.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = 14
     ws.freeze_panes = "A2"
 
+
+def _write_duty_sheet(ws, duty_grid, days):
+    ws.append(["门店"] + [f"{d}号" for d in range(1, days + 1)])
+    for store in sorted(duty_grid):
+        ws.append([store] + [duty_grid[store].get(d, "") for d in range(1, days + 1)])
+    ws.freeze_panes = "B2"
+    ws.column_dimensions["A"].width = 14
+
+
+def write_ledger_excel(rows, path, month):
+    """兼容旧签名（Task 4 删除）：只写逐笔台账。"""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"提成台账-{month}"
+    _write_ledger_sheet(ws, rows)
+    wb.save(path)
+
+
+def write_salary_export(month, summary_rows, ledger_rows, duty_grid, days, path):
+    """写三 sheet 工资导出（ADR-020）：计算结果 + 提成台账 + 考勤排版。"""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws1 = wb.active
+    ws1.title = "计算结果"
+    _write_summary_sheet(ws1, summary_rows)
+    ws2 = wb.create_sheet(f"提成台账-{month}")
+    _write_ledger_sheet(ws2, ledger_rows)
+    ws3 = wb.create_sheet("考勤排版")
+    _write_duty_sheet(ws3, duty_grid, days)
     wb.save(path)

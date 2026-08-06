@@ -580,12 +580,14 @@ def export(month: str, _: User = Depends(current_user), db: Session = Depends(ge
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="salary_{month}.xlsx"'})
 
-    fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
+    # 临时文件建在缓存同目录（同设备），保证 os.replace 原子替换不跨设备（EXDEV）
+    tmp_dir = _os.path.dirname(cache_path)
+    _os.makedirs(tmp_dir, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(suffix=".xlsx", dir=tmp_dir)
     _os.close(fd)
     try:
         _build_export_file(db, month, tmp_path)
         if not stale:
-            _os.makedirs(_os.path.dirname(cache_path), exist_ok=True)
             _os.replace(tmp_path, cache_path)
             src = cache_path
         else:

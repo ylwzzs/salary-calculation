@@ -27,15 +27,14 @@ def _clients():
     region = _env("OSS_REGION", "xinan1")
     int_endpoint = _env("OSS_ENDPOINT_INTERNAL", "http://xinan-1-internal.zos.ctyun.cn")
     pub_endpoint = _env("OSS_ENDPOINT_PUBLIC", "https://xinan1.zos.ctyun.cn")
-    cfg = Config(signature_version="s3v4")
+    cfg_int = Config(signature_version="s3v4", s3={"addressing_style": "path"})
+    cfg_pub = Config(signature_version="s3v4", s3={"addressing_style": "virtual"})
     upload = boto3.client("s3", endpoint_url=int_endpoint,
                           aws_access_key_id=ak, aws_secret_access_key=sk,
-                          region_name=region, config=cfg,
-                          s3={"addressing_style": "path"})
+                          region_name=region, config=cfg_int)
     presign = boto3.client("s3", endpoint_url=pub_endpoint,
                            aws_access_key_id=ak, aws_secret_access_key=sk,
-                           region_name=region, config=cfg,
-                           s3={"addressing_style": "virtual"})
+                           region_name=region, config=cfg_pub)
     return upload, presign
 
 

@@ -212,6 +212,21 @@
   - 失效：沿用 `results_stale`（ADR-014 全覆盖）；重算自动重新生成。
 - **决策过程**：用户提出"算完即可跑缓存"（2026-08-06），确认后台预生成 + xlsxwriter。spec：`docs/superpowers/specs/2026-08-06-export-cache.md`
 
+## ADR-022 导出经天翼云对象存储（OBS）下载 ✅
+
+- **决策**：`/months/{month}/export` 在上传导出文件到天翼云 OBS（桶 `mytech-lesson`）后，返回 **302 重定向**到公网**签名 URL**（15 分钟有效），浏览器从 OBS 高带宽下载。**未配 OBS 时回退直接下载**（兼容）。
+- **背景**：导出生成已优化到 0.03s（ADR-021 缓存），但下载 7.2MB 受**服务器上行带宽**限制（两台不同机器实测 ~150-350KB/s ≈ 2-3Mbps，云主机带宽封顶），20-45s。
+- **备选**：(A) 302 重定向（前端零改动，桶需 CORS）；(B) 前端拿 URL 新开窗口（免 CORS，改前端 + 重建）。
+- **理由（选 A）**：前端零改动、只重建后端；上传走**云内网**（`xinan-1-internal`，实测 0.01s 连通）快且省公网流量；签名 URL 短期有效不裸奔；桶 CORS 用 AK/SK 通过 S3 API 一次性配置。
+- **影响**：
+  - 上传：内网 endpoint `http://xinan-1-internal.zos.ctyun.cn`（path-style），区域 `xinan1`，key `salary/{month}.xlsx`。
+  - 下载签名：公网 virtual-host `https://mytech-lesson.xinan1.zos.ctyun.cn`（`xinan1.zos.ctyun.cn` + virtual 寻址），region `xinan1`。
+  - 新增 `backend/app/services/oss_export.py`：`upload` / `presign` / `head`（本地 mtime vs OSS last_modified，新则覆盖）。
+  - `/export`：OSS 已配 → 确保上传 → 302 签名 URL；未配 → 直连下载。compute 预生成后也上传。
+  - env：`OSS_ENDPOINT_INTERNAL` / `OSS_ENDPOINT_PUBLIC` / `OSS_BUCKET` / `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` / `OSS_REGION` / `OSS_PREFIX`（默认 `salary/`）。
+  - `requirements.txt` 加 `boto3`。
+- **决策过程**：用户确认走天翼云 OBS（2026-08-06），提供 AK/SK/桶 `mytech-lesson`/内网+公网 endpoint。spec：`docs/superpowers/specs/2026-08-06-export-oss.md`
+
 ## ADR-014 主数据变更标 stale（治 H1）✅
 
 - **决策**：主数据端点（stores/products/import_master 增删改）成功后，对所有 Month 置 `results_stale=true`。

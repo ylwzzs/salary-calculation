@@ -599,6 +599,24 @@ def test_compute_kicks_off_cache_pregen(tmp_path, client, monkeypatch):
     assert "2026-06" in calls, "compute 后应触发 _pregen_export_cache"
 
 
+def test_export_redirects_to_oss_when_configured(tmp_path, client, monkeypatch):
+    """ADR-022：OSS 配置时 /export 返回 302 跳签名 URL，且触发上传。"""
+    from backend.app.services import oss_export
+    uploaded = []
+    monkeypatch.setattr(oss_export, "is_configured", lambda: True)
+    monkeypatch.setattr(oss_export, "ensure_upload",
+                        lambda month, p: uploaded.append((month, p)) or True)
+    monkeypatch.setattr(oss_export, "presign_url",
+                        lambda month, **k: f"https://oss.test/salary_{month}.xlsx")
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    r = client.get("/months/2026-06/export", headers=h, follow_redirects=False)
+    assert r.status_code == 302, f"应 302 跳 OSS，实际 {r.status_code}"
+    assert r.headers["location"] == "https://oss.test/salary_2026-06.xlsx", r.headers.get("location")
+    assert uploaded, "导出应触发 OSS 上传"
+
+
 def test_master_data_change_marks_computed_month_stale(tmp_path, client, db_session):
     """H1/ADR-014：改主数据（商品）后，已计算月份 results_stale=True。
     之前 stores/products/import_master 端点全不标 stale → 喂陈旧物化结果。"""

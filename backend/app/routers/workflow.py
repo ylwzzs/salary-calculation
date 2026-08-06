@@ -556,6 +556,8 @@ def _pregen_export_cache(month: str) -> None:
             try:
                 _build_export_file(db, month, tmp)
                 _os.replace(tmp, cache_path)
+                from backend.app.services import oss_export
+                oss_export.ensure_upload(month, cache_path)  # ADR-022：上传 OBS，导出秒开
             finally:
                 if _os.path.exists(tmp):
                     _os.remove(tmp)
@@ -566,21 +568,29 @@ def _pregen_export_cache(month: str) -> None:
         logging.getLogger("workflow.export_cache").exception("预生成导出缓存失败: %s", month)
 
 
+_XLSX_MT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
 @router.get("/months/{month}/export")
 def export(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
-    """导出三 sheet 工资表（ADR-020/021）：缓存优先，未命中/失效则兜底同步生成。零重算（治 R1）。"""
-    from fastapi.responses import FileResponse
+    """导出三 sheet 工资表（ADR-020/021/022）：缓存优先；OSS 已配 → 上传后 302 签名 URL
+    （下载走 OBS 高带宽），未配 → 直连。零重算（治 R1）。"""
+    from fastapi.responses import FileResponse, RedirectResponse
+    from backend.app.services import oss_export
 
     m = _get_month(db, month)
     stale = bool(m.results_stale or m.status != "computed")
     cache_path = _export_cache_path(month)
-    if not stale and _os.path.exists(cache_path):
-        return FileResponse(
-            cache_path,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="salary_{month}.xlsx"'})
+    disp = {"Content-Disposition": f'attachment; filename="salary_{month}.xlsx"'}
 
-    # 临时文件建在缓存同目录（同设备），保证 os.replace 原子替换不跨设备（EXDEV）
+    # 缓存命中
+    if not stale and _os.path.exists(cache_path):
+        if oss_export.is_configured():
+            oss_export.ensure_upload(month, cache_path)
+            return RedirectResponse(oss_export.presign_url(month), status_code=302)
+        return FileResponse(cache_path, media_type=_XLSX_MT, headers=disp)
+
+    # 兜底构建（临时文件建在缓存同目录，保证 os.replace 原子不跨设备 EXDEV）
     tmp_dir = _os.path.dirname(cache_path)
     _os.makedirs(tmp_dir, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(suffix=".xlsx", dir=tmp_dir)
@@ -592,12 +602,12 @@ def export(month: str, _: User = Depends(current_user), db: Session = Depends(ge
             src = cache_path
         else:
             src = tmp_path
+        if oss_export.is_configured():
+            oss_export.ensure_upload(month, src)
+            return RedirectResponse(oss_export.presign_url(month), status_code=302)
         with open(src, "rb") as f:
             data = f.read()
     finally:
         if _os.path.exists(tmp_path):
             _os.remove(tmp_path)
-    return Response(
-        content=data,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="salary_{month}.xlsx"'})
+    return Response(content=data, media_type=_XLSX_MT, headers=disp)

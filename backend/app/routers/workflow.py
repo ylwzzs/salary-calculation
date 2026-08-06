@@ -499,12 +499,14 @@ from fastapi import Response
 
 @router.get("/months/{month}/export")
 def export(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
-    """导出逐笔提成台账（T7.1）：读物化 DetailRow JOIN SalesRecord，零重算（治 R1）。
-    每条导入记录 = 台账一行；含去向标签 + 档位/比例/提成 + 调班信息 + 源 extra 全字段。
-    要点：不调用 _run_compute；调班信息以 SalesRecord.original_store 为真值源派生。
+    """导出三 sheet 工资表（ADR-020）：Sheet1 计算结果汇总 + Sheet2 逐笔提成台账 + Sheet3 考勤排版。
+    读物化 Result/DetailRow JOIN SalesRecord + MonthlyTarget/Duty/Store，零重算（治 R1）。
     """
     from sqlalchemy import text
-    from backend.app.services.ledger_export import write_ledger_excel
+    from backend.app.db import Result, Store, MonthlyTarget, Duty
+    from backend.app.services.engine_bridge import days_in_month
+    from backend.app.services.ledger_export import (
+        write_salary_export, build_summary_rows, build_duty_grid)
 
     rows = db.execute(text("""
         SELECT d.person, d.store, d.sale_date, d.barcode, d.product_name,
@@ -516,11 +518,23 @@ def export(month: str, _: User = Depends(current_user), db: Session = Depends(ge
         WHERE d.month = :m
         ORDER BY d.person, d.store, d.sale_date
     """), {"m": month}).mappings().all()
+    ledger = [dict(r) for r in rows]
+
+    result_rows = db.query(Result).filter_by(month=month).all()
+    store_map = {s.name: s for s in db.query(Store).all()}
+    target_map = {t.store: t.target for t in db.query(MonthlyTarget).filter_by(month=month).all()}
+    duty_rows = db.query(Duty).filter_by(month=month).all()
+    duty_days_map = {}
+    for d in duty_rows:
+        duty_days_map[(d.salesperson, d.store)] = duty_days_map.get((d.salesperson, d.store), 0) + 1
+    days = days_in_month(month)
+    summary = build_summary_rows(result_rows, ledger, store_map, target_map, duty_days_map, days)
+    duty_grid = build_duty_grid(duty_rows)
 
     fd, path = tempfile.mkstemp(suffix=".xlsx")
     _os.close(fd)
     try:
-        write_ledger_excel([dict(r) for r in rows], path, month)
+        write_salary_export(month, summary, ledger, duty_grid, days, path)
         with open(path, "rb") as f:
             data = f.read()
     finally:

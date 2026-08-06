@@ -495,6 +495,42 @@ def test_export_ledger_commission_matches_salary_total(tmp_path, client):
         f"对账闭环失效: 台账计提Σ={ledger_total} != 工资总额Σ={salary_total}")
 
 
+def test_export_three_sheets_and_reconciliation(tmp_path, client):
+    """ADR-020：/export 三 sheet；Sheet1 Σ提成 == Sheet2 Σ提成 == /results Σ；Sheet3 考勤矩阵正确。"""
+    import io
+    import openpyxl
+
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    salary_total = sum(
+        x["commission"] for x in
+        client.get("/months/2026-06/results", headers=h).json()["salary"])
+
+    r = client.get("/months/2026-06/export", headers=h)
+    assert r.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True)
+    assert wb.sheetnames == ["计算结果", "提成台账-2026-06", "考勤排版"], wb.sheetnames
+
+    ws1 = wb["计算结果"]
+    rows1 = list(ws1.iter_rows(values_only=True))
+    h1 = list(rows1[0]); ci = h1.index("提成金额")
+    sum1 = sum((r[ci] or 0) for r in rows1[1:])
+
+    ws2 = wb["提成台账-2026-06"]
+    rows2 = list(ws2.iter_rows(values_only=True))
+    h2 = list(rows2[0]); c2 = h2.index("提成金额")
+    sum2 = sum((r[c2] or 0) for r in rows2[1:])
+
+    assert abs(sum1 - salary_total) < 0.01, f"Sheet1 Σ={sum1} != 工资总额={salary_total}"
+    assert abs(sum2 - salary_total) < 0.01, f"Sheet2 Σ={sum2} != 工资总额={salary_total}"
+
+    ws3 = wb["考勤排版"]
+    rows3 = list(ws3.iter_rows(values_only=True))
+    assert rows3[0][0] == "门店" and rows3[0][1] == "1号"
+    assert any(r[0] == "福景店" and r[1] == "高睿" for r in rows3[1:]), "考勤排版缺福景店/高睿"
+
+
 def test_master_data_change_marks_computed_month_stale(tmp_path, client, db_session):
     """H1/ADR-014：改主数据（商品）后，已计算月份 results_stale=True。
     之前 stores/products/import_master 端点全不标 stale → 喂陈旧物化结果。"""

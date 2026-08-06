@@ -56,16 +56,20 @@ def build_summary_rows(results, tier_rows, store_map, target_map, duty_days_map,
     from decimal import Decimal
 
     # 5 档聚合：{(person, store, tier): [amount, commission, rate]}
+    # 注：tier_rows 可能来自 text() SQL（金额为 float）或测试（Decimal），统一归一化。
     tier_agg = {}
     for r in tier_rows:
         tier = r.get("tier")
         if not tier or tier not in _TIERS:
             continue
         key = (r["person"], r["store"], tier)
+        amount = Decimal(str(r.get("amount") or 0))
+        commission = Decimal(str(r.get("commission") or 0))
         if key not in tier_agg:
-            tier_agg[key] = [Decimal(0), Decimal(0), r.get("rate")]
-        tier_agg[key][0] += r.get("amount") or 0
-        tier_agg[key][1] += r.get("commission") or 0
+            tier_agg[key] = [amount, commission, r.get("rate")]
+        else:
+            tier_agg[key][0] += amount
+            tier_agg[key][1] += commission
 
     persons = defaultdict(list)
     for res in results:
@@ -195,16 +199,6 @@ def _write_duty_sheet(ws, duty_grid, days):
         ws.append([store] + [duty_grid[store].get(d, "") for d in range(1, days + 1)])
     ws.freeze_panes = "B2"
     ws.column_dimensions["A"].width = 14
-
-
-def write_ledger_excel(rows, path, month):
-    """兼容旧签名（Task 4 删除）：只写逐笔台账。"""
-    import openpyxl
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = f"提成台账-{month}"
-    _write_ledger_sheet(ws, rows)
-    wb.save(path)
 
 
 def write_salary_export(month, summary_rows, ledger_rows, duty_grid, days, path):

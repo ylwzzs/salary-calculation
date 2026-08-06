@@ -2,7 +2,7 @@
 
 > 本文件是项目架构决策的**权威记录**，记录每个已确认架构决策的**决策过程**（背景 / 备选 / 理由 / 影响），遵守 `CLAUDE.md` 铁律 3、4。详细设计见 `docs/superpowers/specs/`；本文只锁"是什么 + 为什么"。
 
-- 最近更新：2026-08-06
+- 最近更新：2026-08-06（ADR-021 导出预生成缓存）
 - 状态图例：✅ 已确认（锁定） · 📋 已规划后续
 - **本轮（计算数据流重构）架构已全部确认**（2026-07-19），可进入 writing-plans。
 
@@ -197,6 +197,20 @@
 - **理由（选三 sheet）**：Sheet1 对齐页面列且含 CLI 已有的 5 档明细（满足"计算结果完整数据"）；Sheet2 保留逐笔流水，保 ADR-003 对账闭环（逐笔 Σ = 汇总 Σ）；Sheet3 满足"把考勤排版也导出来"（门店×日期矩阵，与前端 DutyGrid 一致）。
 - **影响**：`ledger_export.py` 单 sheet writer 扩为三 sheet；`/months/{month}/export` 增查 `Result` 聚合 + `DetailRow` 5 档分组（可从已查逐笔行聚合，不加查询）+ `MonthlyTarget`/`Duty`/`Store` 派生列 + `Duty` 矩阵。Sheet1 数据源 = `Result` 表（与页面同源）。**边界**：无当班人的销售只进 `DetailRow` 不进 `Result`（compute 既有语义，ADR-008），此时 Sheet2 Σ 略大于 Sheet1 Σ；6 月实测无此类行，Σ 一致（85560.92）。
 - **决策过程**：用户确认方案 A 并追加考勤排版 sheet（2026-08-06）。spec：`docs/superpowers/specs/2026-08-06-export-three-sheets.md`
+
+## ADR-021 导出预生成缓存 + xlsxwriter 写器 ✅
+
+- **决策**：`/months/{month}/export` 改为**缓存优先**：compute 成功后**后台线程预生成**导出文件到 `/data/export_cache/salary_{month}.xlsx`；导出端点缓存命中且非 stale 时**直接读文件秒开**，未命中/失效时兜底同步生成。写器从 openpyxl 换 **xlsxwriter**（C 写器）。
+- **背景**：导出 95k 行台账端到端 26s，拆解：SQL 0.8s + dict 0.4s + **openpyxl 写 2.28M 单元格 ~24s**（瓶颈，纯 Python 序列化）。导出内容完全由计算产物决定（Result/DetailRow/Duty/MonthlyTarget），结果算完即可预生成。
+- **备选**：(A) 仅换 xlsxwriter——26s→~10s，但每次导出仍等；(B) 缓存+懒生成（首次导出才生成）——首次仍 10s；(C) compute 后**后台预生成** + 懒兜底（选）。
+- **理由（选 C）**：结果算完 ~10s 后台生成完毕，之后导出秒开（用户反复导出同月结果，命中率高）；懒兜底覆盖缓存未就绪/失效/冷启动；xlsxwriter 让预生成从 26s 压到 ~10s，缓存更快就绪、兜底也不慢。
+- **影响**：
+  - `ledger_export.py`：`write_salary_export` 用 xlsxwriter 重写（3 sheet，原子写 tmp+rename）；`build_summary_rows`/`build_duty_grid` 不变（对账/列序不变）。
+  - `workflow.py`：抽 `_build_export_file(db, month, path)`；`/export` 读缓存（`results_stale or status != computed` 判失效）+ 兜底生成 + 原子替换进缓存；`/compute` 成功后 `threading.Thread(daemon)` 预生成（**独立 `SessionLocal()`**，请求会话响应后即关）。
+  - `requirements.txt` 加 `xlsxwriter`；镜像重建。
+  - 缓存目录：`/data/export_cache/`（持久卷，容器重启保留）；文件名 `salary_{month}.xlsx`。
+  - 失效：沿用 `results_stale`（ADR-014 全覆盖）；重算自动重新生成。
+- **决策过程**：用户提出"算完即可跑缓存"（2026-08-06），确认后台预生成 + xlsxwriter。spec：`docs/superpowers/specs/2026-08-06-export-cache.md`
 
 ## ADR-014 主数据变更标 stale（治 H1）✅
 

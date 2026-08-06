@@ -500,11 +500,12 @@ from fastapi import Response
 
 
 def _export_cache_path(month: str) -> str:
-    """导出缓存路径（ADR-021）。默认 <SALARY_DB 目录>/export_cache/salary_{month}.xlsx；
-    可用 SALARY_EXPORT_CACHE_DIR 覆盖（测试用）。"""
+    """导出缓存路径（ADR-021）。默认 <SALARY_DB 目录>/export_cache/{版本}/salary_{month}.xlsx；
+    版本（oss_export.EXPORT_VERSION）变了 → 路径变 → 自动失效旧格式产物。"""
+    from backend.app.services import oss_export
     cache_dir = _os.environ.get("SALARY_EXPORT_CACHE_DIR") or _os.path.join(
         _os.path.dirname(_os.environ.get("SALARY_DB", "/data/salary.db")), "export_cache")
-    return _os.path.join(cache_dir, f"salary_{month}.xlsx")
+    return _os.path.join(cache_dir, oss_export.EXPORT_VERSION, f"salary_{month}.xlsx")
 
 
 def _build_export_file(db, month: str, path: str) -> None:

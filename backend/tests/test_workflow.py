@@ -546,6 +546,7 @@ def test_build_export_file_three_sheets(tmp_path, client, db_session):
 def test_export_uses_cache_when_not_stale(tmp_path, client, monkeypatch):
     """ADR-021：非 stale 导出写缓存，二次导出命中缓存不重建（mtime 不变）。"""
     import io
+    from backend.app.services import oss_export
     cache_dir = tmp_path / "export_cache"
     monkeypatch.setenv("SALARY_EXPORT_CACHE_DIR", str(cache_dir))
     h = auth_header(client)
@@ -553,7 +554,7 @@ def test_export_uses_cache_when_not_stale(tmp_path, client, monkeypatch):
 
     r1 = client.get("/months/2026-06/export", headers=h)
     assert r1.status_code == 200
-    cache_file = cache_dir / "salary_2026-06.xlsx"
+    cache_file = cache_dir / oss_export.EXPORT_VERSION / "salary_2026-06.xlsx"
     assert cache_file.exists(), "导出应写入缓存"
     mtime1 = cache_file.stat().st_mtime
 
@@ -568,12 +569,13 @@ def test_export_bypasses_cache_when_stale(tmp_path, client, monkeypatch, db_sess
     """ADR-021：stale 时绕过缓存重新生成（不读旧缓存）。"""
     import io
     from backend.app.db import Month
+    from backend.app.services import oss_export
     cache_dir = tmp_path / "export_cache"
     monkeypatch.setenv("SALARY_EXPORT_CACHE_DIR", str(cache_dir))
     h = auth_header(client)
     _setup_computed_month(tmp_path, client, h)
     client.get("/months/2026-06/export", headers=h)
-    cache_file = cache_dir / "salary_2026-06.xlsx"
+    cache_file = cache_dir / oss_export.EXPORT_VERSION / "salary_2026-06.xlsx"
     assert cache_file.exists()
 
     db_session.get(Month, "2026-06").results_stale = True

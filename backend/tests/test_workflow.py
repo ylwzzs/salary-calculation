@@ -531,6 +531,74 @@ def test_export_three_sheets_and_reconciliation(tmp_path, client):
     assert any(r[0] == "福景店" and r[1] == "高睿" for r in rows3[1:]), "考勤排版缺福景店/高睿"
 
 
+def test_build_export_file_three_sheets(tmp_path, client, db_session):
+    """ADR-020/021：_build_export_file 直接产出 3 sheet（同步兜底与后台预生成共用同一函数）。"""
+    from backend.app.routers.workflow import _build_export_file
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+    out = tmp_path / "out.xlsx"
+    _build_export_file(db_session, "2026-06", str(out))
+    wb = openpyxl.load_workbook(out)
+    assert wb.sheetnames == ["计算结果", "提成台账-2026-06", "考勤排版"], wb.sheetnames
+
+
+def test_export_uses_cache_when_not_stale(tmp_path, client, monkeypatch):
+    """ADR-021：非 stale 导出写缓存，二次导出命中缓存不重建（mtime 不变）。"""
+    import io
+    cache_dir = tmp_path / "export_cache"
+    monkeypatch.setenv("SALARY_EXPORT_CACHE_DIR", str(cache_dir))
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+
+    r1 = client.get("/months/2026-06/export", headers=h)
+    assert r1.status_code == 200
+    cache_file = cache_dir / "salary_2026-06.xlsx"
+    assert cache_file.exists(), "导出应写入缓存"
+    mtime1 = cache_file.stat().st_mtime
+
+    r2 = client.get("/months/2026-06/export", headers=h)
+    assert r2.status_code == 200
+    assert cache_file.stat().st_mtime == mtime1, "二次导出应命中缓存（不重建）"
+    wb = openpyxl.load_workbook(io.BytesIO(r2.content), read_only=True)
+    assert wb.sheetnames == ["计算结果", "提成台账-2026-06", "考勤排版"]
+
+
+def test_export_bypasses_cache_when_stale(tmp_path, client, monkeypatch, db_session):
+    """ADR-021：stale 时绕过缓存重新生成（不读旧缓存）。"""
+    import io
+    from backend.app.db import Month
+    cache_dir = tmp_path / "export_cache"
+    monkeypatch.setenv("SALARY_EXPORT_CACHE_DIR", str(cache_dir))
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+    client.get("/months/2026-06/export", headers=h)
+    cache_file = cache_dir / "salary_2026-06.xlsx"
+    assert cache_file.exists()
+
+    db_session.get(Month, "2026-06").results_stale = True
+    db_session.commit()
+
+    r = client.get("/months/2026-06/export", headers=h)
+    assert r.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True)
+    assert wb.sheetnames == ["计算结果", "提成台账-2026-06", "考勤排版"]
+
+
+def test_compute_kicks_off_cache_pregen(tmp_path, client, monkeypatch):
+    """ADR-021：/compute 成功后触发后台预生成（spy 确认 _pregen_export_cache 被调）。"""
+    import time
+    import backend.app.routers.workflow as workflow
+    calls = []
+    monkeypatch.setattr(workflow, "_pregen_export_cache", lambda m: calls.append(m))
+    h = auth_header(client)
+    _setup_computed_month(tmp_path, client, h)
+    for _ in range(50):
+        if "2026-06" in calls:
+            break
+        time.sleep(0.02)
+    assert "2026-06" in calls, "compute 后应触发 _pregen_export_cache"
+
+
 def test_master_data_change_marks_computed_month_stale(tmp_path, client, db_session):
     """H1/ADR-014：改主数据（商品）后，已计算月份 results_stale=True。
     之前 stores/products/import_master 端点全不标 stale → 喂陈旧物化结果。"""

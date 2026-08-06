@@ -380,6 +380,8 @@ def do_compute(month: str, _: User = Depends(current_user), db: Session = Depend
             raise
     finally:
         lock.release()
+    # ADR-021：结果已物化，后台预生成导出缓存（独立会话 + stale 守卫），导出时秒开
+    threading.Thread(target=_pregen_export_cache, args=(month,), daemon=True).start()
     return {"details": len(result.details), "warnings": result.warnings,
             "total": round(float(sum(result.commission_by_person.values())), 2)}
 
@@ -497,11 +499,16 @@ import os as _os
 from fastapi import Response
 
 
-@router.get("/months/{month}/export")
-def export(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
-    """导出三 sheet 工资表（ADR-020）：Sheet1 计算结果汇总 + Sheet2 逐笔提成台账 + Sheet3 考勤排版。
-    读物化 Result/DetailRow JOIN SalesRecord + MonthlyTarget/Duty/Store，零重算（治 R1）。
-    """
+def _export_cache_path(month: str) -> str:
+    """导出缓存路径（ADR-021）。默认 <SALARY_DB 目录>/export_cache/salary_{month}.xlsx；
+    可用 SALARY_EXPORT_CACHE_DIR 覆盖（测试用）。"""
+    cache_dir = _os.environ.get("SALARY_EXPORT_CACHE_DIR") or _os.path.join(
+        _os.path.dirname(_os.environ.get("SALARY_DB", "/data/salary.db")), "export_cache")
+    return _os.path.join(cache_dir, f"salary_{month}.xlsx")
+
+
+def _build_export_file(db, month: str, path: str) -> None:
+    """零重算构建三 sheet 导出文件到 path（ADR-020 逻辑抽出，同步兜底与后台预生成共用）。"""
     from sqlalchemy import text
     from backend.app.db import Result, Store, MonthlyTarget, Duty
     from backend.app.services.engine_bridge import days_in_month
@@ -530,15 +537,64 @@ def export(month: str, _: User = Depends(current_user), db: Session = Depends(ge
     days = days_in_month(month)
     summary = build_summary_rows(result_rows, ledger, store_map, target_map, duty_days_map, days)
     duty_grid = build_duty_grid(duty_rows)
+    write_salary_export(month, summary, ledger, duty_grid, days, path)
 
-    fd, path = tempfile.mkstemp(suffix=".xlsx")
+
+def _pregen_export_cache(month: str) -> None:
+    """compute 后后台预生成导出缓存（ADR-021）。独立会话（请求会话已关）；stale/非 computed 放弃写。"""
+    try:
+        from backend.app.db import SessionLocal, Month
+        db = SessionLocal()
+        try:
+            m = db.get(Month, month)
+            if m is None or m.results_stale or m.status != "computed":
+                return
+            cache_path = _export_cache_path(month)
+            _os.makedirs(_os.path.dirname(cache_path), exist_ok=True)
+            fd, tmp = tempfile.mkstemp(suffix=".xlsx", dir=_os.path.dirname(cache_path))
+            _os.close(fd)
+            try:
+                _build_export_file(db, month, tmp)
+                _os.replace(tmp, cache_path)
+            finally:
+                if _os.path.exists(tmp):
+                    _os.remove(tmp)
+        finally:
+            db.close()
+    except Exception:
+        import logging
+        logging.getLogger("workflow.export_cache").exception("预生成导出缓存失败: %s", month)
+
+
+@router.get("/months/{month}/export")
+def export(month: str, _: User = Depends(current_user), db: Session = Depends(get_db)):
+    """导出三 sheet 工资表（ADR-020/021）：缓存优先，未命中/失效则兜底同步生成。零重算（治 R1）。"""
+    from fastapi.responses import FileResponse
+
+    m = _get_month(db, month)
+    stale = bool(m.results_stale or m.status != "computed")
+    cache_path = _export_cache_path(month)
+    if not stale and _os.path.exists(cache_path):
+        return FileResponse(
+            cache_path,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="salary_{month}.xlsx"'})
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
     _os.close(fd)
     try:
-        write_salary_export(month, summary, ledger, duty_grid, days, path)
-        with open(path, "rb") as f:
+        _build_export_file(db, month, tmp_path)
+        if not stale:
+            _os.makedirs(_os.path.dirname(cache_path), exist_ok=True)
+            _os.replace(tmp_path, cache_path)
+            src = cache_path
+        else:
+            src = tmp_path
+        with open(src, "rb") as f:
             data = f.read()
     finally:
-        _os.remove(path)
+        if _os.path.exists(tmp_path):
+            _os.remove(tmp_path)
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

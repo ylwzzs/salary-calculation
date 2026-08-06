@@ -51,3 +51,9 @@ def client(db_session):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _export_cache_dir(tmp_path, monkeypatch):
+    """ADR-021：导出缓存目录指到每测试独立 tmp 目录，避免写 /data 无权限。"""
+    monkeypatch.setenv("SALARY_EXPORT_CACHE_DIR", str(tmp_path / "export_cache"))

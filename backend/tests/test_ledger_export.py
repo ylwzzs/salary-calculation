@@ -40,6 +40,31 @@ def test_build_summary_rows_single_row():
     assert row[11] == 0.0 and row[13] == 0.0 and row[23] == 0.0
 
 
+def test_write_salary_export_totals_row(tmp_path):
+    """Sheet1 底部合计行：销售额/提成金额求和 + 数值 2 位小数。"""
+    import openpyxl
+    from backend.app.services.ledger_export import write_salary_export, build_summary_rows
+
+    results = [
+        _result("甲", "店1", "10", "1", "1", "GE_100", "1.4"),
+        _result("乙", "店1", "20", "1", "1", "GE_100", "2.6"),
+    ]
+    summary = build_summary_rows(results, [], {}, {}, {}, 30)
+    out = tmp_path / "totals.xlsx"
+    write_salary_export("2026-06", summary, [], {}, 30, str(out))
+
+    wb = openpyxl.load_workbook(out)
+    ws = wb["计算结果"]
+    rows = list(ws.iter_rows(values_only=True))
+    headers = list(rows[0])
+    last = rows[-1]
+    assert last[0] == "合计", f"末行应为合计: {last[0]}"
+    sales_i = headers.index("销售额")
+    comm_i = headers.index("提成金额")
+    assert abs((last[sales_i] or 0) - 30.0) < 0.01, last[sales_i]
+    assert abs((last[comm_i] or 0) - 4.0) < 0.01, last[comm_i]
+
+
 def test_build_summary_rows_orders_by_commission_desc():
     results = [
         _result("甲", "店1", "1", "1", "1", "GE_100", "2"),

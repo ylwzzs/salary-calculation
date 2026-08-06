@@ -515,7 +515,8 @@ def test_export_three_sheets_and_reconciliation(tmp_path, client):
     ws1 = wb["计算结果"]
     rows1 = list(ws1.iter_rows(values_only=True))
     h1 = list(rows1[0]); ci = h1.index("提成金额")
-    sum1 = sum((r[ci] or 0) for r in rows1[1:])
+    # 末尾一行是"合计"，数据行是 [1:-1]
+    sum1 = sum((r[ci] or 0) for r in rows1[1:-1])
 
     ws2 = wb["提成台账-2026-06"]
     rows2 = list(ws2.iter_rows(values_only=True))

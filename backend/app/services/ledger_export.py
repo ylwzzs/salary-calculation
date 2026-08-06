@@ -91,7 +91,7 @@ def build_summary_rows(results, tier_rows, store_map, target_map, duty_days_map,
                 round(float(monthly_target), 2), round(float(daily_target), 2),
                 duty, round(float(actual_target), 2),
                 round(float(res.sales or 0), 2),
-                round(float(res.achievement or 0) * 100, 1),
+                round(float(res.achievement or 0) * 100, 2),
                 _bucket_display(res.bucket), round(float(res.commission or 0), 2),
             ]
             for tier in _TIERS:
@@ -156,11 +156,39 @@ def _set_widths(ws, widths):
 
 
 def _write_summary_sheet(wb, ws, summary_rows):
-    ws.write_row(0, 0, _SUMMARY_HEADERS, _header_format(wb))
-    for i, row in enumerate(summary_rows, start=1):
-        ws.write_row(i, 0, row)
+    headers = _SUMMARY_HEADERS
+    ncols = len(headers)
+    ws.write_row(0, 0, headers, _header_format(wb))
+
+    # 数值列（金额/百分比 2 位小数）；考勤天数整数
+    fmt2 = wb.add_format({"num_format": "0.00"})
+    fmt0 = wb.add_format({"num_format": "0"})
+    money_or_pct = set()
+    for i, h in enumerate(headers):
+        if h in ("月目标", "日目标", "实际目标", "销售额", "达标率", "提成金额") \
+                or h.endswith("_销售") or h.endswith("_提成"):
+            money_or_pct.add(i)
+    day_idx = headers.index("考勤天数")
+
+    for r_i, row in enumerate(summary_rows, start=1):
+        for c_i, v in enumerate(row):
+            if c_i == day_idx and isinstance(v, int):
+                ws.write_number(r_i, c_i, v, fmt0)
+            elif c_i in money_or_pct and isinstance(v, (int, float)):
+                ws.write_number(r_i, c_i, v, fmt2)
+            else:
+                ws.write_string(r_i, c_i, "" if v is None else str(v))
+
+    # 底部合计行：销售额、提成金额
+    tot = len(summary_rows) + 1
+    sales_i = headers.index("销售额")
+    comm_i = headers.index("提成金额")
+    ws.write_string(tot, 0, "合计", _header_format(wb))
+    ws.write_number(tot, sales_i, round(sum((r[sales_i] or 0) for r in summary_rows), 2), fmt2)
+    ws.write_number(tot, comm_i, round(sum((r[comm_i] or 0) for r in summary_rows), 2), fmt2)
+
     ws.freeze_panes(1, 0)
-    _set_widths(ws, [12] * len(_SUMMARY_HEADERS))
+    _set_widths(ws, [12] * ncols)
 
 
 def _write_ledger_sheet(wb, ws, rows):

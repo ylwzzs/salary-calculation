@@ -126,6 +126,10 @@ export default function ResultTable({ month, data }: ResultTableProps) {
     return Array.from(map.entries());
   }, [rows]);
 
+  const totals = useMemo(() => rows.reduce(
+    (acc, r) => ({ sales: acc.sales + r.sales, commission: acc.commission + r.commission }),
+    { sales: 0, commission: 0 }), [rows]);
+
   const toggleExpand = (type: "attendance" | "commission", person: string, store: string) => {
     if (expanded?.type === type && expanded.person === person && expanded.store === store) {
       setExpanded(null);
@@ -196,8 +200,8 @@ export default function ResultTable({ month, data }: ResultTableProps) {
                       )}
                       <TableCell>{row.store}</TableCell>
                       <TableCell>{row.storeClass}</TableCell>
-                      <TableCell className="tnum">¥{row.target.toFixed(0)}</TableCell>
-                      <TableCell className="tnum">¥{row.dailyTarget.toFixed(0)}</TableCell>
+                      <TableCell className="tnum">¥{row.target.toFixed(2)}</TableCell>
+                      <TableCell className="tnum">¥{row.dailyTarget.toFixed(2)}</TableCell>
                       <TableCell
                         className={`bg-blue-50 tnum cursor-pointer hover:bg-blue-100 transition-colors ${
                           isExpanded && expanded?.type === "attendance" ? "bg-blue-200" : ""
@@ -206,18 +210,18 @@ export default function ResultTable({ month, data }: ResultTableProps) {
                       >
                         {row.days}天 {isExpanded && expanded?.type === "attendance" ? "▲" : "▼"}
                       </TableCell>
-                      <TableCell className="tnum">¥{row.actualTarget.toFixed(0)}</TableCell>
-                      <TableCell className="tnum">¥{row.sales.toFixed(0)}</TableCell>
-                      <TableCell className="tnum">{(row.achievement * 100).toFixed(0)}%</TableCell>
+                      <TableCell className="tnum">¥{row.actualTarget.toFixed(2)}</TableCell>
+                      <TableCell className="tnum">¥{row.sales.toFixed(2)}</TableCell>
+                      <TableCell className="tnum">{(row.achievement * 100).toFixed(2)}%</TableCell>
                       <TableCell
                         className={`bg-orange-50 tnum cursor-pointer hover:bg-orange-100 transition-colors ${
                           isExpanded && expanded?.type === "commission" ? "bg-orange-200" : ""
                         }`}
                         onClick={() => toggleExpand("commission", person, row.store)}
                       >
-                        ¥{row.commission.toFixed(0)} {isExpanded && expanded?.type === "commission" ? "▲" : "▼"}
+                        ¥{row.commission.toFixed(2)} {isExpanded && expanded?.type === "commission" ? "▲" : "▼"}
                       </TableCell>
-                      <TableCell className="tnum font-semibold">¥{row.commission.toFixed(0)}</TableCell>
+                      <TableCell className="tnum font-semibold">¥{row.commission.toFixed(2)}</TableCell>
                     </TableRow>
                     {/* 展开行 - 也纳入rowSpan组 */}
                     {showExpandedAfter && (
@@ -247,6 +251,14 @@ export default function ResultTable({ month, data }: ResultTableProps) {
                 );
               });
             })}
+            {/* 底部合计：销售额 / 提成金额 / 汇总 */}
+            <TableRow className="bg-zinc-100 font-semibold border-t-2 border-zinc-300">
+              <TableCell colSpan={7} className="tnum">合计</TableCell>
+              <TableCell className="tnum">¥{totals.sales.toFixed(2)}</TableCell>
+              <TableCell className="tnum"></TableCell>
+              <TableCell className="tnum">¥{totals.commission.toFixed(2)}</TableCell>
+              <TableCell className="tnum">¥{totals.commission.toFixed(2)}</TableCell>
+            </TableRow>
           </TableBody>
         </Table>
       </div>

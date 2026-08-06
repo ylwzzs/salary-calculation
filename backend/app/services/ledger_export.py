@@ -98,6 +98,14 @@ def build_summary_rows(results, tier_rows, store_map, target_map, duty_days_map,
     return out
 
 
+def build_duty_grid(duty_rows):
+    """考勤排版矩阵：{store: {day(int): salesperson}}，与前端 DutyGrid 一致。"""
+    grid = {}
+    for d in duty_rows:
+        grid.setdefault(d.store, {})[d.duty_date.day] = d.salesperson
+    return grid
+
+
 def _fmt(v, key):
     """字段值渲染为 Excel 单元格值。None → ""；日期 → ISO；Decimal → float；
     派生字段（__transferred__/__extra__）按规则计算。"""

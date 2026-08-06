@@ -47,3 +47,14 @@ def test_build_summary_rows_orders_by_commission_desc():
     ]
     rows = build_summary_rows(results, [], {}, {}, {}, 30)
     assert [r[0] for r in rows] == ["乙", "甲"]
+
+
+def test_build_duty_grid():
+    from backend.app.services.ledger_export import build_duty_grid
+    d1 = SimpleNamespace(store="福景店", duty_date=date(2026, 6, 1), salesperson="高睿")
+    d2 = SimpleNamespace(store="福景店", duty_date=date(2026, 6, 2), salesperson="张三")
+    d3 = SimpleNamespace(store="螺农店", duty_date=date(2026, 6, 1), salesperson="李四")
+    assert build_duty_grid([d1, d2, d3]) == {
+        "福景店": {1: "高睿", 2: "张三"},
+        "螺农店": {1: "李四"},
+    }

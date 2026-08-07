@@ -84,12 +84,12 @@ def build_rows_from_breakdown(result, store_map, rate_rates, duty_days_map, targ
 
 
 def _bucket_display(bucket: str) -> str:
-    """达标档位代码转中文显示。"""
+    """达标档位代码转中文显示（上界排他：90~99.99 而非 90~100，避免与 ≥100 重合）。"""
     mapping = {
         "GE_100": "≥100%",
-        "90_100": "90~100%",
-        "80_90": "80~90%",
-        "70_80": "70~80%",
+        "90_100": "99.99~90%",
+        "80_90": "89.99~80%",
+        "70_80": "79.99~70%",
         "LT_70": "<70%",
     }
     return mapping.get(bucket, bucket)

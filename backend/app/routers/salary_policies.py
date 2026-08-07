@@ -233,7 +233,7 @@ def export_excel(
 
     commission_rates = policy.content.get("commission_rates", {})
     buckets = ["GE_100", "90_100", "80_90", "70_80", "LT_70"]
-    bucket_labels = [">=100%", "90-100%", "80-90%", "70-80%", "<70%"]
+    bucket_labels = ["≥100%", "99.99~90%", "89.99~80%", "79.99~70%", "<70%"]
     tiers = ["低温低毛", "低温高毛", "常温低毛", "常温高毛", "特价"]
 
     row += 1
@@ -320,7 +320,7 @@ def _build_policy_elements(policy):
     elements.append(Paragraph("二、提成比例表(%)", heading_style))
 
     buckets = ["GE_100", "90_100", "80_90", "70_80", "LT_70"]
-    bucket_labels = [">=100%", "90-100%", "80-90%", "70-80%", "<70%"]
+    bucket_labels = ["≥100%", "99.99~90%", "89.99~80%", "79.99~70%", "<70%"]
     tiers = ["低温低毛", "低温高毛", "常温低毛", "常温高毛", "特价"]
     classes = ["A", "B", "C", "D"]
 

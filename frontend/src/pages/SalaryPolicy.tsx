@@ -14,9 +14,12 @@ const TIERS = ["低温低毛", "低温高毛", "常温低毛", "常温高毛", "
 
 function bucketLabel(bucket: string): string {
   switch (bucket) {
-    case "GE_100": return ">=100%";
+    case "GE_100": return "≥100%";
+    case "90_100": return "99.99~90%";
+    case "80_90": return "89.99~80%";
+    case "70_80": return "79.99~70%";
     case "LT_70": return "<70%";
-    default: return bucket.replace("_", "-") + "%";
+    default: return bucket;
   }
 }
 

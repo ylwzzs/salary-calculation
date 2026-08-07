@@ -1,25 +1,9 @@
-name: Build & Push to 天翼云镜像仓库
+name: Test
 
 # ═══════════════════════════════════════════════════════════════
-# CI/CD 流程（ADR-013 + ADR-015）
-#
-# 整体架构：
-#   test (美国 runner) → build (国内 self-hosted) → deploy (国内 self-hosted)
-#
-# 踩坑记录（为什么不用"正常"方案）：
-#   1. actions/checkout 在 self-hosted runner 上失败
-#      → checkout 不遵守 git config url.insteadOf，无法走镜像
-#      → 改用 git clone 通过 gitclone.com 镜像
-#   2. git clone 到工作目录 '.' 失败
-#      → self-hosted runner 工作目录不会在 job 间清空
-#      → 改用 $RUNNER_TEMP/repo
-#   3. appleboy/ssh-action 失败
-#      → 需从 GitHub 下载 drone-ssh 二进制，国内 runner 无法访问
-#      → 改用原生 ssh 命令
-#   4. xuanyuan.run 只代理 ghcr.io，不代理 github.com git 仓库
-#      → git 仓库用 gitclone.com；容器镜像用 ghcr.io/xuanyuan.run
-#
-# 详见 docs/ARCHITECTURE.md ADR-015
+# 迁移到 openship 后(2026-08-07),build/deploy 由 openship 在生产机构建+部署
+# (含 lesson.hookflow.cn edge/TLS)。本 workflow 仅保留 test(美国 runner)。
+# 详见 docs/openship-platform 的 salary 迁移文档。
 # ═══════════════════════════════════════════════════════════════
 
 on:
@@ -29,14 +13,8 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  REGISTRY: registry-crs-xinan1.ctyun.cn
-  NAMESPACE: hookflow
-  BACKEND_IMAGE: salary-backend
-  FRONTEND_IMAGE: salary-frontend
-
 jobs:
-  # ───────── 测试（GitHub 美国 runner，网络无限制）─────────
+  # ───────── 测试(GitHub 美国 runner,网络无限制)─────────
   test:
     runs-on: ubuntu-latest
     steps:
@@ -50,8 +28,8 @@ jobs:
           pip install -e ".[dev,web]"
       - run: pytest -q
 
-      # 前端类型检查 + 构建（H4：防前端类型错误/构建失败悄悄合 main）
-      # vitest 因 vitest4+jsdom+node 环境兼容问题暂缓，待修后加 npx vitest run
+      # 前端类型检查 + 构建(H4:防前端类型错误/构建失败悄悄合 main)
+      # vitest 因 vitest4+jsdom+node 环境兼容问题暂缓,待修后加 npx vitest run
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -62,97 +40,3 @@ jobs:
         run: |
           npm ci
           npm run build
-
-  # ───────── 构建 & 推送后端镜像（国内 self-hosted runner）─────────
-  # 不用 actions/checkout（不遵守 url 重写），改手动 git clone 通过 gitclone.com 镜像
-  # clone 到 $RUNNER_TEMP/repo（工作目录非空会失败），用 GITHUB_ENV 传递路径
-  build-backend:
-    needs: test
-    runs-on: self-hosted
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout（gitclone.com 镜像 + commit 校验防缓存滞后）
-        run: |
-          cd $RUNNER_TEMP
-          REPO_URL="https://gitclone.com/github.com/${{ github.repository }}.git"
-          git clone --depth 1 --branch ${{ github.ref_name }} "$REPO_URL" repo
-          cd repo
-          SHA=$(git rev-parse HEAD)
-          echo "clone SHA: $SHA ; 期望: ${{ github.sha }}"
-          if [ "$SHA" != "${{ github.sha }}" ]; then
-            echo "::error::gitclone.com 缓存滞后（clone 到 $SHA 非 ${{ github.sha }}），中止防 build 旧代码；请稍后 rerun"
-            exit 1
-          fi
-          echo "REPO_DIR=$RUNNER_TEMP/repo" >> $GITHUB_ENV
-      - name: Login to 天翼云镜像仓库
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-      - name: Build & Push Backend
-        working-directory: ${{ env.REPO_DIR }}
-        env:
-          IMG: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.BACKEND_IMAGE }}
-        run: |
-          docker build -f deploy/Dockerfile.backend -t "$IMG:latest" -t "$IMG:${{ github.sha }}" .
-          docker push "$IMG:latest"
-          docker push "$IMG:${{ github.sha }}"
-
-  # ───────── 构建 & 推送前端镜像（国内 self-hosted runner）─────────
-  build-frontend:
-    needs: test
-    runs-on: self-hosted
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout（gitclone.com 镜像 + commit 校验防缓存滞后）
-        run: |
-          cd $RUNNER_TEMP
-          REPO_URL="https://gitclone.com/github.com/${{ github.repository }}.git"
-          git clone --depth 1 --branch ${{ github.ref_name }} "$REPO_URL" repo
-          cd repo
-          SHA=$(git rev-parse HEAD)
-          echo "clone SHA: $SHA ; 期望: ${{ github.sha }}"
-          if [ "$SHA" != "${{ github.sha }}" ]; then
-            echo "::error::gitclone.com 缓存滞后（clone 到 $SHA 非 ${{ github.sha }}），中止防 build 旧代码；请稍后 rerun"
-            exit 1
-          fi
-          echo "REPO_DIR=$RUNNER_TEMP/repo" >> $GITHUB_ENV
-      - name: Login to 天翼云镜像仓库
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-      - name: Build & Push Frontend
-        working-directory: ${{ env.REPO_DIR }}
-        env:
-          IMG: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.FRONTEND_IMAGE }}
-        run: |
-          docker build -f deploy/Dockerfile.frontend -t "$IMG:latest" -t "$IMG:${{ github.sha }}" .
-          docker push "$IMG:latest"
-          docker push "$IMG:${{ github.sha }}"
-
-  # ───────── 自动部署（SSH 部署机 pull + up）─────────
-  # 不用 appleboy/ssh-action（需下载二进制，国内 runner 无法访问 GitHub）
-  # 改用原生 ssh 命令，无外部依赖
-  deploy:
-    needs: [build-backend, build-frontend]
-    runs-on: self-hosted
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Deploy to server
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key "${DEPLOY_USER}@${DEPLOY_HOST}" "\
-            cd /opt/salary && \
-            docker compose -f docker-compose.prod.yml pull && \
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans && \
-            echo '部署完成: $(date)'"
-          rm -f ~/.ssh/deploy_key

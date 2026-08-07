@@ -211,7 +211,7 @@ def export_excel(
 
         ws.cell(row=row, column=1, value=cat).border = thin_border
         ws.cell(row=row, column=2, value=f">{high_min}%" if high_min else "-").border = thin_border
-        ws.cell(row=row, column=3, value=f"{low_min}-{low_max}%" if low_min and low_max else "-").border = thin_border
+        ws.cell(row=row, column=3, value=f">{low_min}%~{low_max}%" if low_min and low_max else "-").border = thin_border
         ws.cell(row=row, column=4, value=f"≤{special_max}%" if special_max else "-").border = thin_border
         row += 1
 
@@ -298,7 +298,7 @@ def _build_policy_elements(policy):
         margin_data.append([
             cat,
             f">{high_min}%" if high_min else "-",
-            f"{low_min}-{low_max}%" if low_min and low_max else "-",
+            f">{low_min}%~{low_max}%" if low_min and low_max else "-",
             f"≤{special_max}%" if special_max else "-",
         ])
 

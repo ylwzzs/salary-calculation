@@ -249,7 +249,7 @@ export default function SalaryPolicy() {
     return (
       <div className="space-y-2">
         <p className="text-xs text-zinc-500">
-          分类规则：正价 = 毛利率 &gt; 最低 ｜ 低价 = 最低 ≤ 毛利率 ≤ 最高 ｜ 特价 = 毛利率 ≤ 最高（单位 %）
+          分类规则：正价 = 毛利率 &gt; 最低 ｜ 低价 = 最低 &lt; 毛利率 ≤ 最高 ｜ 特价 = 毛利率 ≤ 最高（单位 %）
         </p>
       <Table>
         <TableHeader>
@@ -272,7 +272,7 @@ export default function SalaryPolicy() {
                 <TableCell className="font-medium">{cat}</TableCell>
                 <TableCell>{highMin ? `>${highMin}%` : "-"}</TableCell>
                 <TableCell>
-                  {lowMin && lowMax ? `${lowMin}-${lowMax}%` : lowMin ? `>=${lowMin}%` : lowMax ? `<=${lowMax}%` : "-"}
+                  {lowMin && lowMax ? `>${lowMin}%~${lowMax}%` : lowMin ? `>${lowMin}%` : lowMax ? `<=${lowMax}%` : "-"}
                 </TableCell>
                 <TableCell>{specialMax ? `<=${specialMax}%` : "-"}</TableCell>
               </TableRow>
@@ -292,14 +292,14 @@ export default function SalaryPolicy() {
     return (
       <div className="space-y-2">
         <p className="text-xs text-zinc-500">
-          分类规则：正价 = 毛利率 &gt; 最低 ｜ 低价 = 最低 ≤ 毛利率 ≤ 最高 ｜ 特价 = 毛利率 ≤ 最高（单位 %）
+          分类规则：正价 = 毛利率 &gt; 最低 ｜ 低价 = 最低 &lt; 毛利率 ≤ 最高 ｜ 特价 = 毛利率 ≤ 最高（单位 %）
         </p>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>商品分类</TableHead>
               <TableHead>正价（&gt;最低%）</TableHead>
-              <TableHead>低价（最低~最高%）</TableHead>
+              <TableHead>低价（&gt;最低~最高%）</TableHead>
               <TableHead>特价（≤最高%）</TableHead>
             </TableRow>
           </TableHeader>

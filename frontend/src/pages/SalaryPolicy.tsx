@@ -247,6 +247,10 @@ export default function SalaryPolicy() {
       return <div className="text-sm text-zinc-400">暂无毛利率规则</div>;
     }
     return (
+      <div className="space-y-2">
+        <p className="text-xs text-zinc-500">
+          分类规则：正价 = 毛利率 &gt; 最低 ｜ 低价 = 最低 ≤ 毛利率 ≤ 最高 ｜ 特价 = 毛利率 ≤ 最高（单位 %）
+        </p>
       <Table>
         <TableHeader>
           <TableRow>
@@ -276,6 +280,7 @@ export default function SalaryPolicy() {
           })}
         </TableBody>
       </Table>
+      </div>
     );
   };
 
@@ -285,63 +290,74 @@ export default function SalaryPolicy() {
       return <div className="text-sm text-zinc-400">暂无毛利率规则</div>;
     }
     return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>商品分类</TableHead>
-            <TableHead>正价 最低毛利率(%)</TableHead>
-            <TableHead>低价 最低(%)</TableHead>
-            <TableHead>低价 最高(%)</TableHead>
-            <TableHead>特价 最高(%)</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {categories.map((cat) => {
-            const rules = marginRules[cat] || {};
-            return (
-              <TableRow key={cat}>
-                <TableCell className="font-medium">{cat}</TableCell>
-                <TableCell className="p-1">
-                  <Input
-                    type="number"
-                    value={rules.high?.min ?? ""}
-                    onChange={(e) => updateMarginRule(cat, "high", "min", e.target.value)}
-                    className="h-7 w-16 text-center"
-                    placeholder="17"
-                  />
-                </TableCell>
-                <TableCell className="p-1">
-                  <Input
-                    type="number"
-                    value={rules.low?.min ?? ""}
-                    onChange={(e) => updateMarginRule(cat, "low", "min", e.target.value)}
-                    className="h-7 w-16 text-center"
-                    placeholder="10"
-                  />
-                </TableCell>
-                <TableCell className="p-1">
-                  <Input
-                    type="number"
-                    value={rules.low?.max ?? ""}
-                    onChange={(e) => updateMarginRule(cat, "low", "max", e.target.value)}
-                    className="h-7 w-16 text-center"
-                    placeholder="17"
-                  />
-                </TableCell>
-                <TableCell className="p-1">
-                  <Input
-                    type="number"
-                    value={rules.special?.max ?? ""}
-                    onChange={(e) => updateMarginRule(cat, "special", "max", e.target.value)}
-                    className="h-7 w-16 text-center"
-                    placeholder="10"
-                  />
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+      <div className="space-y-2">
+        <p className="text-xs text-zinc-500">
+          分类规则：正价 = 毛利率 &gt; 最低 ｜ 低价 = 最低 ≤ 毛利率 ≤ 最高 ｜ 特价 = 毛利率 ≤ 最高（单位 %）
+        </p>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>商品分类</TableHead>
+              <TableHead>正价（&gt;最低%）</TableHead>
+              <TableHead>低价（最低~最高%）</TableHead>
+              <TableHead>特价（≤最高%）</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {categories.map((cat) => {
+              const rules = marginRules[cat] || {};
+              return (
+                <TableRow key={cat}>
+                  <TableCell className="font-medium">{cat}</TableCell>
+                  <TableCell className="p-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-zinc-400">&gt;</span>
+                      <Input
+                        type="number"
+                        value={rules.high?.min ?? ""}
+                        onChange={(e) => updateMarginRule(cat, "high", "min", e.target.value)}
+                        className="h-7 w-16 text-center"
+                        placeholder="17"
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell className="p-1">
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        value={rules.low?.min ?? ""}
+                        onChange={(e) => updateMarginRule(cat, "low", "min", e.target.value)}
+                        className="h-7 w-16 text-center"
+                        placeholder="10"
+                      />
+                      <span className="text-zinc-400">~</span>
+                      <Input
+                        type="number"
+                        value={rules.low?.max ?? ""}
+                        onChange={(e) => updateMarginRule(cat, "low", "max", e.target.value)}
+                        className="h-7 w-16 text-center"
+                        placeholder="17"
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell className="p-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-zinc-400">≤</span>
+                      <Input
+                        type="number"
+                        value={rules.special?.max ?? ""}
+                        onChange={(e) => updateMarginRule(cat, "special", "max", e.target.value)}
+                        className="h-7 w-16 text-center"
+                        placeholder="10"
+                      />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
     );
   };
 

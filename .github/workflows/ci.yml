@@ -1,9 +1,11 @@
-name: Test
+name: Test & Deploy
 
 # ═══════════════════════════════════════════════════════════════
-# 迁移到 openship 后(2026-08-07),build/deploy 由 openship 在生产机构建+部署
-# (含 lesson.hookflow.cn edge/TLS)。本 workflow 仅保留 test(美国 runner)。
-# 详见 docs/openship-platform 的 salary 迁移文档。
+# 迁移到 openship 后(2026-08-07):
+#   - test  : 美国 runner,PR 门禁(pytest + 前端构建)
+#   - deploy: main push 且 test 通过后 → 触发 openship 部署
+#     (POST /api/deployments,带 OPENSHIP_TOKEN,commitSha=github.sha)
+# 构建/部署由 openship 在生产机完成(lesson.hookflow.cn)。
 # ═══════════════════════════════════════════════════════════════
 
 on:
@@ -29,7 +31,6 @@ jobs:
       - run: pytest -q
 
       # 前端类型检查 + 构建(H4:防前端类型错误/构建失败悄悄合 main)
-      # vitest 因 vitest4+jsdom+node 环境兼容问题暂缓,待修后加 npx vitest run
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -40,3 +41,25 @@ jobs:
         run: |
           npm ci
           npm run build
+
+  # ───────── 部署:test 通过 + main push → 触发 openship ─────────
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger openship deploy
+        env:
+          OPENSHIP_TOKEN: ${{ secrets.OPENSHIP_TOKEN }}
+        run: |
+          RESP=$(curl -sS -w "\n%{http_code}" -X POST "https://deploy.hookflow.cn/api/deployments" \
+            -H "Authorization: Bearer $OPENSHIP_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"projectId\":\"proj_gQCXaFXxQ8K5UVGd\",\"branch\":\"main\",\"commitSha\":\"${{ github.sha }}\",\"environment\":\"production\"}")
+          CODE=$(printf '%s\n' "$RESP" | tail -n1)
+          BODY=$(printf '%s\n' "$RESP" | sed '$d')
+          echo "openship HTTP ${CODE}"
+          case "$CODE" in
+            2*) echo "部署触发成功";;
+            *) echo "部署触发失败: $BODY"; exit 1;;
+          esac

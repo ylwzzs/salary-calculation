@@ -38,8 +38,8 @@ def _clients():
     return upload, presign
 
 
-# 导出格式版本：改动导出列/结构时 +1，使缓存路径与 OSS key 变化 → 自动失效旧产物（ADR-021/022）
-EXPORT_VERSION = "v2"
+# 导出格式版本：改动导出列/结构/文案时 +1，使缓存路径与 OSS key 变化 → 自动失效旧产物（ADR-021/022）
+EXPORT_VERSION = "v3"
 
 
 def object_key(month: str) -> str:
